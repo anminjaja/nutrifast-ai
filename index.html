@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NutriFast AI - 홈 대시보드</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* 입력창 내부 스피너(화살표) 숨김 처리로 숫자 잘림 방지 */
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type="number"] {
+      -moz-appearance: textfield;
+    }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-800 min-h-screen pb-12">
+
+  <!-- 상단 네비게이션 (common.js에서 렌더링) -->
+  <nav id="appNav" class="bg-emerald-900 text-white shadow-md sticky top-0 z-50"></nav>
+
+  <main class="max-w-5xl mx-auto px-4 mt-6 space-y-6">
+    
+    <!-- 상단 배너 (common.js에서 렌더링) -->
+    <div id="appBanner"></div>
+    <script src="./common.js"></script>
+    <script>
+      NutriLayout.mount({
+        page: 'index',
+        badge: { today: true },
+        label: '오늘 현황',
+        title: '오늘의 영양 및 공복 대시보드',
+        subtitle: { id: 'profileSummaryText', text: '3페이지에서 신체 프로필과 목표를 설정할 수 있습니다.' },
+        actions:
+          NutriLayout.btn('secondary', './analysis.html', '⚙️ 목표 변경') +
+          NutriLayout.btn('primary', './record.html', '+ 식단 기록하기')
+      });
+    </script>
+
+    <!-- 좌우 컬럼 바닥선 일치 (items-stretch) -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+
+      <!-- [좌측 7칸] 간헐적 공복 타이머 + 오늘의 식사 + 오늘의 운동 기록 -->
+      <section class="lg:col-span-7 flex flex-col gap-6">
+        
+        <!-- 1. 간헐적 공복 타이머 카드 -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm border border-stone-200 space-y-4">
+          <div class="flex flex-wrap justify-between items-center gap-2">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" id="fastingStatusDot"></span>
+              <h2 class="text-base font-bold text-stone-900">간헐적 공복 타이머</h2>
+            </div>
+            <div class="flex items-center gap-2">
+              <span id="syncedTargetHoursBadge" class="text-xs font-bold px-2.5 py-1 rounded-lg bg-stone-100 text-stone-700 border border-stone-200">
+                목표 공복: 16시간
+              </span>
+              <span id="fastingStateBadge" class="text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200">
+                단식 진행 중
+              </span>
+            </div>
+          </div>
+
+          <div class="bg-stone-50 rounded-2xl p-5 border border-stone-200 text-center space-y-2">
+            <p class="text-xs font-semibold text-stone-500" id="fastingStartedAtText">공복 시작 시각을 설정해 주세요.</p>
+            <div class="text-4xl font-black text-stone-900 tracking-tight font-mono" id="fastingTimerDisplay">
+              00:00:00
+            </div>
+            <div class="w-full bg-stone-200 h-3 rounded-full overflow-hidden mt-3">
+              <div id="fastingProgressBar" class="bg-emerald-600 h-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+            <div class="flex justify-between text-[11px] font-semibold text-stone-400 mt-1">
+              <span>시작 (0%)</span>
+              <span id="fastingPercentText" class="text-emerald-700 font-bold">달성률 0%</span>
+              <span id="fastingTargetLabel">목표 16시간</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-bold">
+            <button onclick="startFastingNow()" class="bg-emerald-600 hover:bg-emerald-700 text-white py-3 px-3 rounded-xl transition">
+              ⏱ 지금부터 공복 시작
+            </button>
+            <button onclick="toggleCustomTimeBox()" class="bg-amber-50 hover:bg-amber-100 text-amber-900 py-3 px-3 rounded-xl border border-amber-300 transition">
+              ✏️ 시작 시간 직접 설정
+            </button>
+            <button onclick="stopAndRecordFasting()" id="btnStopFasting" class="bg-rose-50 hover:bg-rose-100 text-rose-700 py-3 px-3 rounded-xl border border-rose-200 transition">
+              ⏹ 단식 중단 및 기록
+            </button>
+          </div>
+
+          <div id="customTimeBox" class="hidden p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-3">
+            <div class="flex justify-between items-center">
+              <label class="text-xs font-bold text-amber-950">실제 공복을 시작한 시간 설정</label>
+              <button onclick="toggleCustomTimeBox()" class="text-[11px] text-stone-400 hover:text-stone-700 font-bold">✕ 닫기</button>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <button onclick="setQuickPastTime(1)" class="text-[11px] bg-white hover:bg-amber-100 text-stone-700 border border-amber-300 px-2.5 py-1 rounded-lg font-semibold transition">1시간 전 시작</button>
+              <button onclick="setQuickPastTime(3)" class="text-[11px] bg-white hover:bg-amber-100 text-stone-700 border border-amber-300 px-2.5 py-1 rounded-lg font-semibold transition">3시간 전 시작</button>
+              <button onclick="setQuickPastTime(6)" class="text-[11px] bg-white hover:bg-amber-100 text-stone-700 border border-amber-300 px-2.5 py-1 rounded-lg font-semibold transition">6시간 전 시작</button>
+              <button onclick="setYesterdayEvening()" class="text-[11px] bg-white hover:bg-amber-100 text-stone-700 border border-amber-300 px-2.5 py-1 rounded-lg font-semibold transition">어제 저녁 8시</button>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2">
+              <input type="datetime-local" id="customDateTimeInput"
+                class="flex-1 bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-emerald-600">
+              <button onclick="applyCustomStartTime()" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-5 py-2 rounded-xl text-xs shrink-0 transition">
+                이 시간부터 적용
+              </button>
+            </div>
+          </div>
+
+          <div class="border-t border-stone-100 pt-3">
+            <div class="flex justify-between items-center mb-2">
+              <span class="text-xs font-bold text-stone-600">누적 단식 기록 히스토리</span>
+              <button onclick="clearFastingHistory()" class="text-[11px] text-stone-400 hover:text-rose-500">기록 비우기</button>
+            </div>
+            <ul id="fastingHistoryList" class="space-y-1.5 max-h-36 overflow-y-auto text-xs"></ul>
+          </div>
+        </div>
+
+        <!-- 2. 오늘의 식사 기록 -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm border border-stone-200 space-y-4">
+          <div class="flex justify-between items-center">
+            <h2 class="text-base font-bold text-stone-900">오늘의 식사 기록</h2>
+            <button onclick="resetTodayLogs()" class="text-xs text-rose-500 hover:underline font-semibold">식단 초기화</button>
+          </div>
+          <div id="mealSlotHistoryList" class="space-y-3"></div>
+        </div>
+
+        <!-- 3. [수직 정렬 핵심] flex-1 적용: 우측 카드들에 맞춰 높이 연장 -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm border border-stone-200 flex-1 flex flex-col justify-between gap-4">
+          <div>
+            <div class="flex flex-wrap justify-between items-end gap-2 border-b border-stone-100 pb-3">
+              <div>
+                <h2 class="text-base font-bold text-stone-900">오늘의 운동 기록</h2>
+                <p class="text-[11px] text-stone-500 mt-1">운동 종목과 시간을 선택하면 체중 기반 소모 칼로리가 자동 계산됩니다.</p>
+              </div>
+              <div class="text-xs font-bold text-stone-500 bg-stone-50 px-3 py-2 rounded-xl border border-stone-200">
+                이번 주: <span id="weekWorkoutCount" class="text-amber-600 font-extrabold text-sm">0</span>일 달성 / 
+                이번 달: <span id="monthWorkoutCount" class="text-emerald-600 font-extrabold text-sm">0</span>일
+              </div>
+            </div>
+
+            <!-- 운동 입력 폼 -->
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center mt-3">
+              <div class="sm:col-span-5">
+                <select id="workoutTypeSelect" onchange="autoCalcWorkoutKcal()"
+                  class="w-full border border-stone-300 rounded-xl px-3 py-2.5 text-xs font-bold bg-stone-50 focus:outline-none focus:border-amber-500">
+                  <option value="running" data-met="7.0" data-label="조깅 / 러닝" selected>🏃 조깅 / 러닝 (중고강도)</option>
+                  <option value="boxing" data-met="9.0" data-label="복싱 / 줄넘기">🥊 복싱 / 줄넘기 (고강도)</option>
+                  <option value="weight" data-met="5.0" data-label="웨이트 트레이닝">🏋️ 웨이트 트레이닝 (근력)</option>
+                  <option value="fast_walking" data-met="4.5" data-label="빠르게 걷기 / 사이클">🚴 빠르게 걷기 / 실내 사이클</option>
+                  <option value="walking" data-met="3.0" data-label="가벼운 걷기 / 산책">🚶 가벼운 걷기 / 산책</option>
+                  <option value="custom" data-met="0" data-label="기타 운동">✏️ 기타 운동 (직접 입력)</option>
+                </select>
+              </div>
+
+              <div class="relative sm:col-span-3">
+                <input id="workoutMinutesInput" type="number" min="1" step="5" value="30" oninput="autoCalcWorkoutKcal()"
+                  class="w-full border border-stone-300 rounded-xl px-3 py-2.5 text-sm font-bold text-stone-800 focus:outline-none focus:border-amber-500 text-right pr-8">
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-stone-400">분</span>
+              </div>
+
+              <div class="relative sm:col-span-2">
+                <input id="workoutKcalInput" type="number" min="1" placeholder="0"
+                  class="w-full border border-amber-300 bg-amber-50/40 rounded-xl px-2.5 py-2.5 text-sm font-extrabold text-amber-700 focus:outline-none focus:border-amber-500 text-right pr-9">
+                <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-amber-700/70">kcal</span>
+              </div>
+
+              <button onclick="saveWorkout()" class="sm:col-span-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold py-2.5 px-3 rounded-xl shadow-sm transition">
+                등록
+              </button>
+            </div>
+
+            <!-- 기타 운동 직접 입력란 -->
+            <div id="customWorkoutNameWrap" class="hidden mt-2">
+              <input id="workoutCustomNameInput" type="text" placeholder="운동 이름을 입력해 주세요 (예: 필라테스, 등산, 수영)"
+                class="w-full border border-amber-300 bg-amber-50/30 rounded-xl px-3.5 py-2 text-xs font-semibold focus:outline-none focus:border-amber-500">
+            </div>
+
+            <div class="flex flex-wrap justify-between items-center gap-2 text-[11px] text-stone-400 mt-2">
+              <span id="workoutWeightGuide">* 설정 체중(58kg) 및 운동 강도(MET) 기준 자동 계산됨</span>
+              <div class="flex gap-1">
+                <button onclick="setQuickWorkoutMinutes(20)" class="px-2 py-0.5 rounded bg-stone-100 hover:bg-stone-200 text-stone-600 font-semibold transition">20분</button>
+                <button onclick="setQuickWorkoutMinutes(30)" class="px-2 py-0.5 rounded bg-stone-100 hover:bg-stone-200 text-stone-600 font-semibold transition">30분</button>
+                <button onclick="setQuickWorkoutMinutes(45)" class="px-2 py-0.5 rounded bg-stone-100 hover:bg-stone-200 text-stone-600 font-semibold transition">45분</button>
+                <button onclick="setQuickWorkoutMinutes(60)" class="px-2 py-0.5 rounded bg-stone-100 hover:bg-stone-200 text-stone-600 font-semibold transition">60분</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="border-t border-stone-100 pt-3">
+            <p class="text-xs font-bold text-stone-600 mb-2">오늘 완료한 운동 목록</p>
+            <ul id="workoutTodayList" class="space-y-2 max-h-52 overflow-y-auto pr-1"></ul>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- [우측 5칸] 섭취 열량 + 도넛 차트 + 수분 트래커 + 최근 7일 운동 차트 -->
+      <section class="lg:col-span-5 flex flex-col gap-6">
+        
+        <!-- 1. 오늘 총 섭취 열량 카드 (운동 보정 반영) -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm border border-stone-200 space-y-4">
+          <div class="flex justify-between items-baseline">
+            <h2 class="text-base font-bold text-stone-900">오늘 섭취 열량</h2>
+            <span class="text-xs text-stone-400" id="targetKcalLabel">목표 2,050 kcal</span>
+          </div>
+          <div>
+            <div class="flex justify-between items-baseline">
+              <div class="flex flex-col">
+                <span class="text-3xl font-extrabold text-stone-900" id="totalKcalDisplay">0 kcal</span>
+                <span class="text-[11px] text-amber-600 font-bold mt-1 hidden" id="workoutKcalOffsetBadge"></span>
+              </div>
+              <span class="text-xs text-stone-500 font-semibold text-right" id="remainingKcalDisplay">2,050 kcal 남음</span>
+            </div>
+            <div class="w-full bg-stone-100 h-3 rounded-full overflow-hidden mt-3">
+              <div id="calorieProgressBar" class="bg-emerald-600 h-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="grid grid-cols-3 gap-2 pt-2 border-t border-stone-100 text-center">
+            <div class="bg-amber-50 p-2.5 rounded-xl border border-amber-200/60">
+              <p class="text-[10px] font-bold text-amber-800">탄수화물</p>
+              <p class="text-sm font-extrabold text-amber-950 mt-0.5" id="totalCarbDisplay">0.0g</p>
+            </div>
+            <div class="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200/60">
+              <p class="text-[10px] font-bold text-emerald-800">단백질</p>
+              <p class="text-sm font-extrabold text-emerald-950 mt-0.5" id="totalProteinDisplay">0.0g</p>
+            </div>
+            <div class="bg-rose-50 p-2.5 rounded-xl border border-rose-200/60">
+              <p class="text-[10px] font-bold text-rose-800">지방</p>
+              <p class="text-sm font-extrabold text-rose-950 mt-0.5" id="totalFatDisplay">0.0g</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. 오늘 먹은 탄·단·지 에너지 균형 시각화 도넛 차트 -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm border border-stone-200 space-y-4">
+          <div>
+            <h2 class="text-base font-bold text-stone-900">오늘 먹은 탄·단·지 에너지 균형</h2>
+            <p class="text-xs text-stone-500 mt-0.5">오늘 식단으로 얻은 총 열량(kcal) 중 탄·단·지가 차지하는 비중</p>
+          </div>
+
+          <div class="relative flex justify-center items-center h-48">
+            <canvas id="macroDoughnutChart"></canvas>
+            <div id="chartCenterText" class="absolute text-center pointer-events-none">
+              <p class="text-[11px] text-stone-400 font-semibold" id="chartCenterSub">오늘 총 섭취</p>
+              <p class="text-base font-black text-stone-800" id="chartCenterVal">0 kcal</p>
+            </div>
+          </div>
+
+          <div id="macroDetailCards" class="grid grid-cols-3 gap-2 pt-2 border-t border-stone-100 text-center"></div>
+        </div>
+
+        <!-- 3. [업그레이드] 수분 섭취 퀵 트래커 (목록 로깅 기능 추가) -->
+        <div class="bg-white rounded-3xl p-5 shadow-sm border border-stone-200 space-y-3">
+          <div class="flex justify-between items-baseline">
+            <div class="flex items-center gap-1.5">
+              <span class="text-sm">💧</span>
+              <h2 class="text-sm font-bold text-stone-900">오늘의 수분 섭취</h2>
+            </div>
+            <span class="text-[11px] text-stone-400">목표 2,000 ml</span>
+          </div>
+          <div>
+            <div class="flex justify-between items-baseline">
+              <span class="text-xl font-black text-sky-600" id="waterAmountDisplay">0 ml</span>
+              <span class="text-[11px] font-bold text-stone-500" id="waterPercentDisplay">0% 달성</span>
+            </div>
+            <div class="w-full bg-stone-100 h-2.5 rounded-full overflow-hidden mt-1.5">
+              <div id="waterProgressBar" class="bg-sky-500 h-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+          </div>
+          
+          <!-- 버튼 및 직접 입력칸 조합 -->
+          <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
+            <button onclick="addWaterLog(250)" class="bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 text-[11px] font-bold px-3 py-1.5 rounded-lg transition">+ 250ml</button>
+            <button onclick="addWaterLog(500)" class="bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 text-[11px] font-bold px-3 py-1.5 rounded-lg transition">+ 500ml</button>
+            <div class="flex items-center ml-auto gap-1">
+              <input id="customWaterTime" type="time" title="마신 시간 (미지정시 현재 시간)"
+                class="w-20 px-1.5 py-1.5 text-[11px] font-bold border border-stone-300 rounded-lg text-center focus:outline-none focus:border-sky-500">
+              <input id="customWaterInput" type="number" placeholder="직접 입력" 
+                class="w-16 px-2 py-1.5 text-[11px] font-bold border border-stone-300 rounded-lg text-right focus:outline-none focus:border-sky-500">
+              <button onclick="addCustomWaterLog()" class="bg-stone-700 hover:bg-stone-800 text-white text-[11px] font-bold px-2 py-1.5 rounded-lg transition">입력</button>
+            </div>
+          </div>
+
+          <!-- 오늘 기록된 수분 리스트 -->
+          <div class="border-t border-stone-100 pt-2 mt-2">
+            <ul id="waterTodayList" class="space-y-1.5 max-h-24 overflow-y-auto pr-1"></ul>
+          </div>
+        </div>
+
+        <!-- 4. 최근 7일 운동 소모 추이 막대 차트 (높이 연장) -->
+        <div class="bg-white rounded-3xl p-5 shadow-sm border border-stone-200 flex-1 flex flex-col justify-between gap-3">
+          <div class="flex justify-between items-baseline">
+            <div class="flex items-center gap-1.5">
+              <span class="text-sm">📊</span>
+              <h2 class="text-sm font-bold text-stone-900">최근 7일 운동 소모 추이</h2>
+            </div>
+            <span class="text-[10px] text-stone-400">단위: kcal</span>
+          </div>
+          
+          <div class="relative w-full flex-1 min-h-[140px] flex items-center justify-center">
+            <canvas id="weeklyWorkoutChart"></canvas>
+          </div>
+
+          <p class="text-[11px] text-stone-400 text-center border-t border-stone-100 pt-2" id="weeklyWorkoutSummaryText">
+            최근 7일간 총 0 kcal 소모
+          </p>
+        </div>
+
+      </section>
+
+    </div>
+  </main>
+
+  <script>
+    let timerInterval = null;
+    let macroChartInstance = null;
+    let weeklyChartInstance = null;
+    let syncedTargetFastingHours = 16;
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initProfileAndDashboard();
+      initCustomDateTimePicker();
+      initFastingTimer();
+      renderFastingHistory();
+      renderWaterUI(); 
+      autoCalcWorkoutKcal(); 
+      renderTodayLogsAndChart();
+    });
+
+    function getProfileTargetFastingHours(profileObj) {
+      if (!profileObj) return 16;
+      const directVal = profileObj.fastingHours || profileObj.fastingGoalHours || profileObj.fastingGoal || profileObj.targetFasting || profileObj.fasting || profileObj.fastingTime;
+      if (directVal && !isNaN(parseInt(directVal, 10))) return parseInt(directVal, 10);
+      for (const [key, val] of Object.entries(profileObj)) {
+        if (['weight', 'bodyFat', 'activity', 'mealsPerDay'].includes(key)) continue;
+        const num = parseInt(val, 10);
+        if ([12, 14, 16, 18, 20, 24].includes(num)) return num;
+      }
+      return 16;
+    }
+
+    function getUserWeight() {
+      const savedProfile = localStorage.getItem('nutri_profile');
+      if (savedProfile) {
+        try {
+          const p = JSON.parse(savedProfile);
+          if (p.weight && parseFloat(p.weight) > 0) return parseFloat(p.weight);
+        } catch (_) {}
+      }
+      return 58;
+    }
+
+    function initProfileAndDashboard() {
+      const savedProfile = localStorage.getItem('nutri_profile');
+      let targetKcal = 2050;
+      let mealsPerDay = 2;
+
+      if (savedProfile) {
+        const p = JSON.parse(savedProfile);
+        const lbm = p.weight * (1 - p.bodyFat / 100);
+        let tdee = (370 + 21.6 * lbm) * p.activity;
+        if (p.goal === 'cut') tdee -= 400;
+        else if (p.goal === 'bulk') tdee += 300;
+
+        targetKcal = Math.round(tdee);
+        mealsPerDay = p.mealsPerDay || 2;
+        syncedTargetFastingHours = getProfileTargetFastingHours(p);
+
+        document.getElementById('profileSummaryText').textContent =
+          `일일 권장 ${targetKcal} kcal · ${mealsPerDay}끼 분할 · 목표 공복 ${syncedTargetFastingHours}시간 관리 중`;
+      } else {
+        syncedTargetFastingHours = parseInt(localStorage.getItem('fasting_target_hours') || '16', 10);
+      }
+
+      document.getElementById('targetKcalLabel').textContent = `목표 ${targetKcal.toLocaleString()} kcal`;
+      document.getElementById('syncedTargetHoursBadge').textContent = `목표 공복: ${syncedTargetFastingHours}시간`;
+      document.getElementById('fastingTargetLabel').textContent = `목표 ${syncedTargetFastingHours}시간`;
+    }
+
+    // =========================================================================
+    // [업그레이드] 수분 섭취 로깅 시스템
+    // =========================================================================
+    function getWaterLogs() {
+      return JSON.parse(localStorage.getItem('nutri_water_logs') || '[]');
+    }
+
+// ml 단위와 커스텀 시간(타임스탬프, 지정 안 하면 현재 시간)을 받아 저장
+function addWaterLog(ml, customTimeMs = null) {
+  if (ml <= 0) return;
+  const logs = getWaterLogs();
+  
+  // 커스텀 시간이 있으면 그 시간을, 없으면 현재 시간을 고유 ID로 사용
+  let logId = customTimeMs ? customTimeMs : Date.now();
+  
+  // 혹시라도 동일한 시간에 기록되어 ID가 겹칠 경우를 대비한 안전장치
+  while (logs.some(l => l.id === logId)) {
+    logId += 1;
+  }
+  
+  logs.push({ id: logId, ml: ml });
+  localStorage.setItem('nutri_water_logs', JSON.stringify(logs));
+  renderWaterUI(); // 시간순 정렬은 renderWaterUI 내에 이미 구현되어 있음
+}
+
+function addCustomWaterLog() {
+  const mlInput = document.getElementById('customWaterInput');
+  const timeInput = document.getElementById('customWaterTime');
+  const val = parseInt(mlInput.value, 10);
+  
+  if (val && val > 0) {
+    let customTimestamp = null;
+    
+    // 사용자가 시간을 선택했다면 오늘 날짜에 해당 시간을 조합하여 타임스탬프 생성
+    if (timeInput.value) {
+      const [hours, minutes] = timeInput.value.split(':');
+      const now = new Date();
+      now.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+      customTimestamp = now.getTime();
+    }
+    
+    addWaterLog(val, customTimestamp);
+    
+    // 기록 후 입력창 초기화
+    mlInput.value = '';
+    timeInput.value = '';
+  } else {
+    alert('수분 섭취량(ml)을 올바르게 입력해주세요.');
+  }
+}
+
+    function deleteWaterLog(id) {
+      let logs = getWaterLogs();
+      logs = logs.filter(l => l.id !== id);
+      localStorage.setItem('nutri_water_logs', JSON.stringify(logs));
+      renderWaterUI();
+    }
+
+    function renderWaterUI() {
+      const logs = getWaterLogs();
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const endOfToday = startOfToday + 86400000;
+
+      let todayTotal = 0;
+      let listHtml = '';
+      
+      // 최신 기록이 위로 오도록 정렬
+      const todayLogs = logs.filter(l => l.id >= startOfToday && l.id < endOfToday).sort((a, b) => b.id - a.id);
+      
+      todayLogs.forEach(l => {
+         todayTotal += l.ml;
+         const time = new Date(l.id).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+         listHtml += `
+           <li class="flex justify-between items-center text-[11px] bg-sky-50 border border-sky-100 px-2.5 py-1.5 rounded-lg text-sky-900">
+             <span class="font-semibold">💧 ${time}</span>
+             <div class="flex items-center gap-2 font-bold">
+               <span>${l.ml} ml</span>
+               <button onclick="deleteWaterLog(${l.id})" class="text-sky-400 hover:text-rose-500 transition px-1">✕</button>
+             </div>
+           </li>`;
+      });
+
+      if (todayLogs.length === 0) {
+        listHtml = `<li class="text-[11px] font-semibold text-stone-400 text-center py-2 border border-dashed border-stone-200 rounded-lg">아직 기록된 수분 섭취가 없습니다.</li>`;
+      }
+
+      document.getElementById('waterTodayList').innerHTML = listHtml;
+      
+      const target = 2000;
+      const pct = Math.min(100, Math.round((todayTotal / target) * 100));
+      document.getElementById('waterAmountDisplay').textContent = `${todayTotal.toLocaleString()} ml`;
+      document.getElementById('waterPercentDisplay').textContent = `${pct}% 달성`;
+      document.getElementById('waterProgressBar').style.width = `${pct}%`;
+    }
+
+    // =========================================================================
+    // 최근 7일 운동 트렌드 막대 차트 (Chart.js)
+    // =========================================================================
+    function renderWeeklyWorkoutChart() {
+      const canvas = document.getElementById('weeklyWorkoutChart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const logs = JSON.parse(localStorage.getItem('nutri_workout_logs') || '[]');
+
+      const daysLabels = [];
+      const dayKeys = [];
+      const dailyKcal = [0, 0, 0, 0, 0, 0, 0];
+
+      const now = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
+        const keyStr = d.toLocaleDateString();
+        daysLabels.push(i === 0 ? '오늘' : dateStr);
+        dayKeys.push(keyStr);
+      }
+
+      logs.forEach(w => {
+        const wDateStr = new Date(w.id).toLocaleDateString();
+        const idx = dayKeys.indexOf(wDateStr);
+        if (idx !== -1) {
+          dailyKcal[idx] += (w.kcal || 0);
+        }
+      });
+
+      const total7Days = dailyKcal.reduce((a, b) => a + b, 0);
+      const summaryEl = document.getElementById('weeklyWorkoutSummaryText');
+      if (summaryEl) {
+        summaryEl.textContent = `최근 7일간 총 ${total7Days.toLocaleString()} kcal 소모`;
+      }
+
+      if (weeklyChartInstance) weeklyChartInstance.destroy();
+
+      weeklyChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: daysLabels,
+          datasets: [{
+            label: '소모 칼로리',
+            data: dailyKcal,
+            backgroundColor: daysLabels.map((_, idx) => idx === 6 ? '#d97706' : '#fde68a'),
+            hoverBackgroundColor: '#b45309',
+            borderRadius: 6,
+            borderSkipped: false
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (context) => ` 소모: ${context.raw} kcal`
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { font: { size: 10, weight: '600' } }
+            },
+            y: {
+              beginAtZero: true,
+              grid: { color: '#f5f5f4' },
+              ticks: { font: { size: 9 }, maxTicksLimit: 3 }
+            }
+          }
+        }
+      });
+    }
+
+    // =========================================================================
+    // 공복 타이머 로직
+    // =========================================================================
+    function initCustomDateTimePicker() {
+      const inputEl = document.getElementById('customDateTimeInput');
+      if (inputEl) {
+        const now = new Date();
+        const offset = now.getTimezoneOffset() * 60000;
+        inputEl.value = new Date(now - offset).toISOString().slice(0, 16);
+      }
+    }
+
+    function toggleCustomTimeBox() {
+      const box = document.getElementById('customTimeBox');
+      if (box) box.classList.toggle('hidden');
+    }
+
+    function setQuickPastTime(hoursAgo) {
+      const pastMs = Date.now() - (hoursAgo * 3600 * 1000);
+      const d = new Date(pastMs);
+      const offset = d.getTimezoneOffset() * 60000;
+      document.getElementById('customDateTimeInput').value = new Date(d - offset).toISOString().slice(0, 16);
+      applyCustomStartTime();
+    }
+
+    function setYesterdayEvening() {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      d.setHours(20, 0, 0, 0);
+      const offset = d.getTimezoneOffset() * 60000;
+      document.getElementById('customDateTimeInput').value = new Date(d - offset).toISOString().slice(0, 16);
+      applyCustomStartTime();
+    }
+
+    function applyCustomStartTime() {
+      const inputEl = document.getElementById('customDateTimeInput');
+      if (!inputEl || !inputEl.value) {
+        alert("공복을 시작했던 날짜와 시간을 선택해 주세요.");
+        return;
+      }
+      const selectedTime = new Date(inputEl.value).getTime();
+      if (selectedTime > Date.now()) {
+        alert("미래 시간은 공복 시작 시각으로 설정할 수 없습니다.");
+        return;
+      }
+      localStorage.setItem('nutri_last_meal_time', selectedTime);
+      localStorage.setItem('fasting_is_active', 'true');
+      document.getElementById('customTimeBox').classList.add('hidden');
+      initFastingTimer();
+    }
+
+    function startFastingNow() {
+      localStorage.setItem('nutri_last_meal_time', Date.now());
+      localStorage.setItem('fasting_is_active', 'true');
+      initCustomDateTimePicker();
+      initFastingTimer();
+    }
+
+    function stopAndRecordFasting() {
+      const isFasting = localStorage.getItem('fasting_is_active') !== 'false';
+      const startTime = parseInt(localStorage.getItem('nutri_last_meal_time'), 10);
+      if (!isFasting || !startTime) {
+        alert("현재 진행 중인 단식이 없습니다.");
+        return;
+      }
+      if (timerInterval) clearInterval(timerInterval);
+      const now = Date.now();
+      const diffMs = Math.max(0, now - startTime);
+      const hours = Math.floor(diffMs / 3600000);
+      const minutes = Math.floor((diffMs % 3600000) / 60000);
+      const sDate = new Date(startTime);
+      const eDate = new Date(now);
+      const fmtDate = (d) => `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+      const history = JSON.parse(localStorage.getItem('fasting_history_list') || '[]');
+      history.unshift({
+        startStr: fmtDate(sDate),
+        endStr: fmtDate(eDate),
+        durationStr: `${hours}시간 ${minutes}분`,
+        targetHours: syncedTargetFastingHours,
+        achieved: hours >= syncedTargetFastingHours
+      });
+      localStorage.setItem('fasting_history_list', JSON.stringify(history.slice(0, 10)));
+      localStorage.setItem('fasting_is_active', 'false');
+
+      initFastingTimer();
+      renderFastingHistory();
+    }
+
+    function initFastingTimer() {
+      if (timerInterval) clearInterval(timerInterval);
+      const isFasting = localStorage.getItem('fasting_is_active') !== 'false';
+      const startTime = localStorage.getItem('nutri_last_meal_time');
+      if (!startTime || !isFasting) {
+        renderStoppedUI();
+        return;
+      }
+      renderActiveUI();
+      updateTimerCalculation();
+      timerInterval = setInterval(updateTimerCalculation, 1000);
+    }
+
+    function updateTimerCalculation() {
+      const isFasting = localStorage.getItem('fasting_is_active') !== 'false';
+      const startTime = parseInt(localStorage.getItem('nutri_last_meal_time'), 10);
+      if (!isFasting || !startTime) return;
+
+      const now = Date.now();
+      const diffMs = Math.max(0, now - startTime);
+      const totalSec = Math.floor(diffMs / 1000);
+      const hours = Math.floor(totalSec / 3600);
+      const minutes = Math.floor((totalSec % 3600) / 60);
+      const seconds = totalSec % 60;
+
+      document.getElementById('fastingTimerDisplay').textContent =
+        [hours, minutes, seconds].map(v => String(v).padStart(2, '0')).join(':');
+
+      const sDate = new Date(startTime);
+      document.getElementById('fastingStartedAtText').textContent =
+        `공복 시작: ${sDate.getMonth() + 1}월 ${sDate.getDate()}일 ${String(sDate.getHours()).padStart(2, '0')}:${String(sDate.getMinutes()).padStart(2, '0')}부터 진행 중`;
+
+      const targetMs = syncedTargetFastingHours * 3600 * 1000;
+      const pct = Math.min(100, Math.round((diffMs / targetMs) * 100));
+      document.getElementById('fastingProgressBar').style.width = `${pct}%`;
+      
+      const pctEl = document.getElementById('fastingPercentText');
+      if (pctEl) pctEl.textContent = `달성률 ${pct}% (목표 ${syncedTargetFastingHours}시간)`;
+
+      if (pct >= 100) {
+        document.getElementById('fastingStateBadge').textContent = "목표 단식 달성!";
+        document.getElementById('fastingStateBadge').className = "text-xs font-bold px-2.5 py-1 rounded-lg bg-teal-50 text-teal-700 border border-teal-200";
+      }
+    }
+
+    function renderStoppedUI() {
+      document.getElementById('fastingStatusDot').className = "w-3 h-3 rounded-full bg-rose-400";
+      document.getElementById('fastingStateBadge').textContent = "단식 중단됨";
+      document.getElementById('fastingStateBadge').className = "text-xs font-bold px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200";
+      document.getElementById('fastingStartedAtText').textContent = "단식이 중단되었습니다. 새 공복을 시작하거나 시간을 설정하세요.";
+      document.getElementById('fastingTimerDisplay').textContent = "00:00:00";
+      document.getElementById('fastingProgressBar').style.width = "0%";
+      const pctEl = document.getElementById('fastingPercentText');
+      if (pctEl) pctEl.textContent = "대기 중";
+    }
+
+    function renderActiveUI() {
+      document.getElementById('fastingStatusDot').className = "w-3 h-3 rounded-full bg-emerald-500 animate-pulse";
+      document.getElementById('fastingStateBadge').textContent = "단식 진행 중";
+      document.getElementById('fastingStateBadge').className = "text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200";
+    }
+
+    function renderFastingHistory() {
+      const listEl = document.getElementById('fastingHistoryList');
+      if (!listEl) return;
+      const history = JSON.parse(localStorage.getItem('fasting_history_list') || '[]');
+      if (history.length === 0) {
+        listEl.innerHTML = `<li class="text-stone-400 py-3 text-center bg-stone-50 rounded-xl border border-dashed border-stone-200">저장된 단식 기록이 없습니다.</li>`;
+        return;
+      }
+      listEl.innerHTML = history.map(item => `
+        <li class="flex justify-between items-center bg-stone-50 px-3 py-2 rounded-xl border border-stone-200">
+          <span class="text-stone-600">${item.startStr} ~ ${item.endStr}</span>
+          <span class="font-bold ${item.achieved ? 'text-emerald-700' : 'text-stone-800'}">
+            ${item.durationStr} / 목표 ${item.targetHours || syncedTargetFastingHours}h ${item.achieved ? '✓' : '(중단)'}
+          </span>
+        </li>
+      `).join('');
+    }
+
+    function clearFastingHistory() {
+      if (confirm('누적된 단식 기록을 모두 지우시겠습니까?')) {
+        localStorage.removeItem('fasting_history_list');
+        renderFastingHistory();
+      }
+    }
+
+    // =========================================================================
+    // MET 기반 운동 자동 계산
+    // =========================================================================
+    function setQuickWorkoutMinutes(mins) {
+      document.getElementById('workoutMinutesInput').value = mins;
+      autoCalcWorkoutKcal();
+    }
+
+    function autoCalcWorkoutKcal() {
+      const selectEl = document.getElementById('workoutTypeSelect');
+      const opt = selectEl.options[selectEl.selectedIndex];
+      const met = parseFloat(opt.getAttribute('data-met')) || 0;
+      const minutes = parseFloat(document.getElementById('workoutMinutesInput').value) || 0;
+      const customWrap = document.getElementById('customWorkoutNameWrap');
+      const guideEl = document.getElementById('workoutWeightGuide');
+
+      if (selectEl.value === 'custom') {
+        customWrap.classList.remove('hidden');
+        guideEl.textContent = '* 기타 운동은 운동 이름과 소모 칼로리(kcal)를 직접 입력해 주세요.';
+        return;
+      } else {
+        customWrap.classList.add('hidden');
+      }
+
+      const weight = getUserWeight();
+      const burnedKcal = Math.round(1.05 * met * weight * (minutes / 60));
+      document.getElementById('workoutKcalInput').value = burnedKcal > 0 ? burnedKcal : 0;
+      guideEl.textContent = `* 설정 체중(${weight}kg) · 강도(${met} MET) 기준 자동 계산됨`;
+    }
+
+    function saveWorkout() {
+      const selectEl = document.getElementById('workoutTypeSelect');
+      const opt = selectEl.options[selectEl.selectedIndex];
+      const minutes = parseInt(document.getElementById('workoutMinutesInput').value, 10) || 0;
+      const kcalInput = document.getElementById('workoutKcalInput');
+      const kcal = parseInt(kcalInput.value, 10);
+
+      let desc = '';
+      if (selectEl.value === 'custom') {
+        const customName = document.getElementById('workoutCustomNameInput').value.trim();
+        if (!customName) {
+          alert('기타 운동의 이름을 입력해 주세요.');
+          document.getElementById('workoutCustomNameInput').focus();
+          return;
+        }
+        desc = minutes > 0 ? `${customName} (${minutes}분)` : customName;
+      } else {
+        const label = opt.getAttribute('data-label') || '운동';
+        desc = minutes > 0 ? `${label} (${minutes}분)` : label;
+      }
+
+      if (!kcal || kcal <= 0) {
+        alert('소모한 칼로리를 올바르게 입력해 주세요.');
+        kcalInput.focus();
+        return;
+      }
+
+      const logs = JSON.parse(localStorage.getItem('nutri_workout_logs') || '[]');
+      logs.push({ id: Date.now(), desc, minutes, kcal });
+      localStorage.setItem('nutri_workout_logs', JSON.stringify(logs));
+
+      if (selectEl.value === 'custom') {
+        document.getElementById('workoutCustomNameInput').value = '';
+      }
+      autoCalcWorkoutKcal();
+      renderTodayLogsAndChart();
+    }
+
+    function deleteWorkout(id) {
+      if (!confirm('이 운동 기록을 삭제하시겠습니까?')) return;
+      let logs = JSON.parse(localStorage.getItem('nutri_workout_logs') || '[]');
+      logs = logs.filter(w => w.id !== id);
+      localStorage.setItem('nutri_workout_logs', JSON.stringify(logs));
+      renderTodayLogsAndChart();
+    }
+
+    function renderWorkoutStats() {
+      const logs = JSON.parse(localStorage.getItem('nutri_workout_logs') || '[]');
+      const now = new Date();
+
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const endOfToday = startOfToday + 86400000;
+
+      const day = now.getDay();
+      const diffToMonday = now.getDate() - day + (day === 0 ? -6 : 1);
+      const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diffToMonday).getTime();
+      const endOfWeek = startOfWeek + (7 * 86400000);
+
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).getTime();
+
+      const weekDays = new Set();
+      const monthDays = new Set();
+
+      let todayKcal = 0;
+      const todayListEl = document.getElementById('workoutTodayList');
+      let todayHtml = '';
+
+      logs.forEach(w => {
+        const dStr = new Date(w.id).toLocaleDateString();
+
+        if (w.id >= startOfWeek && w.id < endOfWeek) weekDays.add(dStr);
+        if (w.id >= startOfMonth && w.id <= endOfMonth) monthDays.add(dStr);
+
+        if (w.id >= startOfToday && w.id < endOfToday) {
+          todayKcal += w.kcal;
+          todayHtml += `
+            <li class="flex justify-between items-center text-[11px] bg-amber-50 border border-amber-100 px-2.5 py-1.5 rounded-lg text-amber-900">
+              <span class="font-semibold">💪 ${escapeHtml(w.desc)}</span>
+              <div class="flex items-center gap-2 font-bold">
+                <span class="text-amber-700">🔥 ${w.kcal} kcal 소모</span>
+                <button onclick="deleteWorkout(${w.id})" class="text-amber-400 hover:text-rose-500 transition px-1">✕</button>
+              </div>
+            </li>`;
+        }
+      });
+
+      document.getElementById('weekWorkoutCount').textContent = weekDays.size;
+      document.getElementById('monthWorkoutCount').textContent = monthDays.size;
+
+      if (todayHtml === '') {
+        todayHtml = `<li class="text-[11px] font-semibold text-stone-400 text-center py-2 border border-dashed border-stone-200 rounded-lg">오늘 기록된 운동이 없습니다.</li>`;
+      }
+      todayListEl.innerHTML = todayHtml;
+
+      return todayKcal;
+    }
+
+    // =========================================================================
+    // 오늘의 식단 렌더링 및 칼로리(운동 반영) 차트 연동
+    // =========================================================================
+    // 시각 정보가 있는 기록은 '오늘' 것만 사용 (월간 샘플·지난 기록이 오늘 합계에 섞이지 않도록)
+    function isTodayLog(l) {
+      const ts = Number(l.timestamp);
+      if (!ts) return true;   // 시각 정보가 없는 예전 기록은 오늘 기록으로 간주
+      const d = new Date(ts), n = new Date();
+      return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+    }
+
+    function renderTodayLogsAndChart() {
+      const logs = JSON.parse(localStorage.getItem('nutri_logs') || '[]').filter(isTodayLog);
+      const container = document.getElementById('mealSlotHistoryList');
+      let sumKcal = 0, sumCarb = 0, sumPro = 0, sumFat = 0;
+
+      let mealsCount = 2;
+      const savedProfile = localStorage.getItem('nutri_profile');
+      if (savedProfile) {
+        const p = JSON.parse(savedProfile);
+        if (p.mealsPerDay) mealsCount = parseInt(p.mealsPerDay, 10);
+      }
+
+      const slotMap = {};
+      for (let i = 1; i <= 6; i++) slotMap[i] = [];
+      slotMap['snack'] = [];
+
+      logs.forEach(item => {
+        const slot = item.mealSlot || 1;
+        if (!slotMap[slot]) slotMap[slot] = [];
+        slotMap[slot].push(item);
+        sumKcal += item.kcal || 0;
+        sumCarb += item.carb || 0;
+        sumPro += item.protein || 0;
+        sumFat += item.fat || 0;
+      });
+
+      const slotNames = {
+        1: '1번째 끼니 (첫 식사)',
+        2: '2번째 끼니 (두 번째 식사)',
+        3: '3번째 끼니 (세 번째 식사)',
+        4: '4번째 끼니 (네 번째 식사)',
+        5: '5번째 끼니 (다섯 번째 식사)',
+        6: '6번째 끼니 (여섯 번째 식사)',
+        'snack': '간식 (추가 섭취)'
+      };
+
+      const displaySlots = Array.from({ length: mealsCount }, (_, i) => i + 1);
+      displaySlots.push('snack');
+
+      container.innerHTML = displaySlots.map(s => {
+        const items = slotMap[s] || [];
+        const sKcal = items.reduce((acc, cur) => acc + cur.kcal, 0);
+        return `
+          <div class="p-4 rounded-2xl border border-stone-200 bg-stone-50 flex justify-between items-center">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-sm text-stone-900">${slotNames[s]}</span>
+                <span class="text-xs font-extrabold ${sKcal > 0 ? 'text-emerald-700' : 'text-stone-400'}">${Math.round(sKcal)} kcal</span>
+              </div>
+              <p class="text-xs text-stone-500 mt-1">
+                ${items.length > 0 ? items.map(it => `[${it.badge || '식품'}] ${it.name}`).join(', ') : '기록된 식단이 없습니다.'}
+              </p>
+            </div>
+            <a href="./record.html?slot=${s}" class="text-xs bg-white border border-stone-300 hover:border-emerald-600 px-3 py-1.5 rounded-xl font-bold transition">+ 기록</a>
+          </div>
+        `;
+      }).join('');
+
+      const burnedToday = renderWorkoutStats();
+      
+      document.getElementById('totalKcalDisplay').textContent = `${Math.round(sumKcal).toLocaleString()} kcal`;
+      
+      const badgeEl = document.getElementById('workoutKcalOffsetBadge');
+      if (burnedToday > 0) {
+        badgeEl.textContent = `🔥 운동 소모 -${burnedToday} kcal 적용됨`;
+        badgeEl.classList.remove('hidden');
+      } else {
+        badgeEl.classList.add('hidden');
+      }
+
+      document.getElementById('totalCarbDisplay').textContent = `${sumCarb.toFixed(1)}g`;
+      document.getElementById('totalProteinDisplay').textContent = `${sumPro.toFixed(1)}g`;
+      document.getElementById('totalFatDisplay').textContent = `${sumFat.toFixed(1)}g`;
+
+      const targetKcal = parseInt(document.getElementById('targetKcalLabel').textContent.replace(/[^0-9]/g, ''), 10) || 2050;
+      const adjustedTargetKcal = targetKcal + burnedToday;
+      const remain = adjustedTargetKcal - sumKcal;
+      
+      const remainEl = document.getElementById('remainingKcalDisplay');
+      if (remain >= 0) {
+        remainEl.innerHTML = `총 ${Math.round(adjustedTargetKcal).toLocaleString()} 중<br><span class="text-sm text-stone-700 font-extrabold">${Math.round(remain).toLocaleString()} kcal 남음</span>`;
+        remainEl.className = "text-xs text-stone-500 font-semibold text-right";
+      } else {
+        remainEl.innerHTML = `총 ${Math.round(adjustedTargetKcal).toLocaleString()} 초과<br><span class="text-sm font-extrabold">${Math.abs(Math.round(remain)).toLocaleString()} kcal 초과</span>`;
+        remainEl.className = "text-xs text-rose-600 text-right";
+      }
+
+      document.getElementById('calorieProgressBar').style.width = `${Math.min(100, Math.round((sumKcal / adjustedTargetKcal) * 100))}%`;
+
+      renderDoughnut(sumCarb, sumPro, sumFat);
+      renderWeeklyWorkoutChart();
+    }
+
+    function renderDoughnut(carb, pro, fat) {
+      const ctx = document.getElementById('macroDoughnutChart').getContext('2d');
+      const cKcal = Math.round(carb * 4);
+      const pKcal = Math.round(pro * 4);
+      const fKcal = Math.round(fat * 9);
+      const totalKcal = cKcal + pKcal + fKcal;
+
+      if (macroChartInstance) macroChartInstance.destroy();
+
+      const centerSub = document.getElementById('chartCenterSub');
+      const centerVal = document.getElementById('chartCenterVal');
+      const detailContainer = document.getElementById('macroDetailCards');
+
+      if (totalKcal === 0) {
+        centerSub.textContent = "식단 기록 없음";
+        centerVal.textContent = "0 kcal";
+
+        macroChartInstance = new Chart(ctx, {
+          type: 'doughnut',
+          data: { datasets: [{ data: [1], backgroundColor: ['#e7e5e4'], borderWidth: 0 }] },
+          options: {
+            cutout: '70%',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { tooltip: { enabled: false }, legend: { display: false } }
+          }
+        });
+
+        detailContainer.innerHTML = `
+          <div class="bg-amber-50/60 p-2 rounded-xl border border-amber-200/50">
+            <p class="text-[11px] font-bold text-amber-800">탄수화물 (0%)</p>
+            <p class="text-xs font-black text-amber-950 mt-0.5">0.0g</p>
+            <p class="text-[10px] text-amber-700 font-semibold">0 kcal</p>
+          </div>
+          <div class="bg-emerald-50/60 p-2 rounded-xl border border-emerald-200/50">
+            <p class="text-[11px] font-bold text-emerald-800">단백질 (0%)</p>
+            <p class="text-xs font-black text-emerald-950 mt-0.5">0.0g</p>
+            <p class="text-[10px] text-emerald-700 font-semibold">0 kcal</p>
+          </div>
+          <div class="bg-rose-50/60 p-2 rounded-xl border border-rose-200/50">
+            <p class="text-[11px] font-bold text-rose-800">지방 (0%)</p>
+            <p class="text-xs font-black text-rose-950 mt-0.5">0.0g</p>
+            <p class="text-[10px] text-rose-700 font-semibold">0 kcal</p>
+          </div>
+        `;
+        return;
+      }
+
+      const cPct = Math.round((cKcal / totalKcal) * 100);
+      const pPct = Math.round((pKcal / totalKcal) * 100);
+      const fPct = Math.max(0, 100 - cPct - pPct);
+
+      centerSub.textContent = "오늘 총 섭취";
+      centerVal.textContent = `${totalKcal.toLocaleString()} kcal`;
+
+      macroChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: [
+            `탄수화물 ${cPct}%`,
+            `단백질 ${pPct}%`,
+            `지방 ${fPct}%`
+          ],
+          datasets: [{
+            data: [cKcal, pKcal, fKcal],
+            backgroundColor: ['#f59e0b', '#10b981', '#f43f5e'],
+            borderWidth: 2,
+            borderColor: '#ffffff'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '70%',
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const lbl = context.label || '';
+                  const val = context.raw || 0;
+                  return ` ${lbl}: ${val} kcal`;
+                }
+              }
+            }
+          }
+        }
+      });
+
+      detailContainer.innerHTML = `
+        <div class="bg-amber-50 p-2 rounded-xl border border-amber-200/70">
+          <p class="text-[11px] font-bold text-amber-800">탄수화물 (${cPct}%)</p>
+          <p class="text-xs font-black text-amber-950 mt-0.5">${carb.toFixed(1)}g</p>
+          <p class="text-[10px] text-amber-700 font-semibold">${cKcal} kcal</p>
+        </div>
+        <div class="bg-emerald-50 p-2 rounded-xl border border-emerald-200/70">
+          <p class="text-[11px] font-bold text-emerald-800">단백질 (${pPct}%)</p>
+          <p class="text-xs font-black text-emerald-950 mt-0.5">${pro.toFixed(1)}g</p>
+          <p class="text-[10px] text-emerald-700 font-semibold">${pKcal} kcal</p>
+        </div>
+        <div class="bg-rose-50 p-2 rounded-xl border border-rose-200/70">
+          <p class="text-[11px] font-bold text-rose-800">지방 (${fPct}%)</p>
+          <p class="text-xs font-black text-rose-950 mt-0.5">${fat.toFixed(1)}g</p>
+          <p class="text-[10px] text-rose-700 font-semibold">${fKcal} kcal</p>
+        </div>
+      `;
+    }
+
+    function resetTodayLogs() {
+      if (confirm("오늘 기록된 식단을 모두 초기화하시겠습니까?\n(지난 날짜 기록은 월간 리포트용으로 보존됩니다.)")) {
+        // 오늘 기록만 삭제하고 지난 기록은 남김
+        const all = JSON.parse(localStorage.getItem('nutri_logs') || '[]');
+        localStorage.setItem('nutri_logs', JSON.stringify(all.filter(l => !isTodayLog(l))));
+        renderTodayLogsAndChart();
+      }
+    }
+  </script>
+</body>
+</html>

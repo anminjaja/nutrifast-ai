@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NutriFast AI - 월간 리포트</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-stone-50 text-stone-800 min-h-screen pb-12">
+
+  <!-- 상단 네비게이션 (common.js에서 렌더링) -->
+  <nav id="appNav" class="bg-emerald-900 text-white shadow-md sticky top-0 z-50"></nav>
+
+  <main class="max-w-5xl mx-auto px-4 mt-6 space-y-6">
+
+    <!-- 상단 배너 & 동적 총평 코멘트 (common.js에서 렌더링) -->
+    <div id="appBanner"></div>
+    <script src="./common.js"></script>
+    <script>
+      NutriLayout.mount({
+        page: 'report',
+        badge: { id: 'currentMonthBadge', text: '2026년 10월' },
+        label: '데이터 통합 분석',
+        title: '월간 식단·운동·수분 종합 리포트',
+        actions: `
+          <button onclick="injectDemoMonthData()" class="bg-amber-400 hover:bg-amber-300 text-stone-900 font-bold px-3.5 py-2 rounded-2xl text-xs shadow transition">
+            🧪 발표용 1개월 샘플 채우기
+          </button>
+          <button onclick="clearDemoMonthData()" id="clearDemoBtn" class="hidden bg-emerald-950/60 hover:bg-rose-600 text-emerald-100 hover:text-white font-semibold px-3 py-2 rounded-2xl text-xs border border-emerald-600/40 transition">
+            샘플 지우기
+          </button>`,
+        extra: `
+          <div class="bg-emerald-900/70 border border-emerald-700/80 rounded-2xl p-4 text-xs sm:text-sm leading-relaxed text-emerald-50" id="monthlyAiCommentBox">
+            데이터를 분석하고 있습니다...
+          </div>`
+      });
+    </script>
+
+    <!-- 상단 4대 핵심 지표 요약 카드 -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-white rounded-3xl p-5 shadow-sm border border-stone-200">
+        <p class="text-xs font-bold text-stone-400">이번 달 운동 실천</p>
+        <div class="flex items-baseline justify-between mt-2">
+          <span class="text-2xl font-black text-amber-600" id="statWorkoutDays">0일</span>
+          <span class="text-xs font-semibold text-stone-500" id="statWorkoutKcal">총 0 kcal 소모</span>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-3xl p-5 shadow-sm border border-stone-200">
+        <p class="text-xs font-bold text-stone-400">식단 적정 준수일</p>
+        <div class="flex items-baseline justify-between mt-2">
+          <span class="text-2xl font-black text-emerald-600" id="statDietGoodDays">0일</span>
+          <span class="text-xs font-semibold text-stone-500" id="statDietRecordedDays">기록 0일 중</span>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-3xl p-5 shadow-sm border border-stone-200">
+        <p class="text-xs font-bold text-stone-400">수분 2L 목표 달성</p>
+        <div class="flex items-baseline justify-between mt-2">
+          <span class="text-2xl font-black text-sky-600" id="statWaterGoalDays">0일</span>
+          <span class="text-xs font-semibold text-stone-500" id="statWaterAvg">일평균 0 ml</span>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-3xl p-5 shadow-sm border border-stone-200">
+        <p class="text-xs font-bold text-stone-400">누적 단식 목표 달성</p>
+        <div class="flex items-baseline justify-between mt-2">
+          <span class="text-2xl font-black text-teal-600" id="statFastingSuccess">0회</span>
+          <span class="text-xs font-semibold text-stone-500" id="statFastingTotal">전체 기록 0회 중</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 메인 분석 그리드 (1페이지와 동일하게 items-stretch 및 7:5 분할로 바닥선 수직 정렬 일치) -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+
+      <!-- [좌측 7칸] 월간 잔디 심기 히트맵 + 주차별 운동·수분 성실도 진단 -->
+      <section class="lg:col-span-7 flex flex-col gap-6">
+
+        <!-- 1. 월간 운동 & 수분 실천 캘린더 (히트맵) -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm border border-stone-200 space-y-4">
+          <!-- 1. 월간 운동 & 수분 실천 캘린더 (히트맵) 헤더 부분 -->
+          <div class="flex flex-wrap justify-between items-center gap-2">
+            <div>
+              <h2 class="text-base font-bold text-stone-900">1. 월간 운동·수분 실천 히트맵 (잔디 심기)</h2>
+              <p class="text-xs text-stone-500 mt-0.5">소모 칼로리가 높을수록 진한 주황색 배경으로 표시됩니다.</p>
+              
+              <!-- [추가된 부분] 초록/빨강 점 및 아이콘 범례 설명 -->
+              <div class="flex flex-wrap items-center gap-3 text-[11px] font-semibold text-stone-600 mt-2">
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span> 식단 적정 유지</span>
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-rose-500 inline-block"></span> 열량 초과 주의</span>
+                <span class="flex items-center gap-1">💧 수분 1.5L 이상</span>
+                <span class="flex items-center gap-1">🔥 운동 소모</span>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-1.5 text-[11px] font-semibold text-stone-500">
+              <span>휴식</span>
+              <span class="w-3 h-3 rounded bg-stone-100 border border-stone-200 inline-block"></span>
+              <span class="w-3 h-3 rounded bg-amber-200 inline-block"></span>
+              <span class="w-3 h-3 rounded bg-amber-400 inline-block"></span>
+              <span class="w-3 h-3 rounded bg-amber-600 inline-block"></span>
+              <span>고강도</span>
+            </div>
+          </div>
+
+          <!-- 요일 헤더 -->
+          <div class="grid grid-cols-7 gap-2 text-center text-[11px] font-bold text-stone-400 pt-1">
+            <span class="text-rose-400">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span class="text-sky-500">토</span>
+          </div>
+
+          <!-- 달력 그리드 -->
+          <div id="calendarHeatmapGrid" class="grid grid-cols-7 gap-2"></div>
+        </div>
+
+        <!-- 2. 주차별 운동 횟수 및 식단 위반/준수 상세 분석표 (flex-1로 우측 하단과 수직 정렬 일치) -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm border border-stone-200 flex-1 flex flex-col justify-between gap-4">
+          <div class="space-y-3">
+            <div>
+              <h2 class="text-base font-bold text-stone-900">2. 주차별 운동 빈도 및 식단·수분 진단표</h2>
+              <p class="text-xs text-stone-500 mt-0.5">어느 주에 운동을 잘 갔는지, 칼로리를 초과하거나 부족했던 주간은 언제인지 비교합니다.</p>
+            </div>
+
+            <div id="weeklyBreakdownList" class="space-y-2.5 pt-1"></div>
+          </div>
+
+          <div class="bg-stone-50 rounded-2xl p-3.5 border border-stone-200 flex items-center justify-between text-xs">
+            <span class="font-bold text-stone-600">💡 1페이지에서 운동·물을 추가하면 실시간 반영됩니다.</span>
+            <a href="./index.html" class="text-emerald-700 font-extrabold hover:underline shrink-0">홈으로 이동 →</a>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- [우측 5칸] 주차별 칼로리 추이 차트 + 주차별 탄·단·지 달성률 차트 -->
+      <section class="lg:col-span-5 flex flex-col gap-6">
+
+        <!-- 1. 주차별 목표 대비 평균 섭취 & 운동 열량 차트 -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm border border-stone-200 space-y-4">
+          <div>
+            <h2 class="text-base font-bold text-stone-900">3. 주차별 섭취 vs 목표 열량 추이</h2>
+            <p class="text-xs text-stone-500 mt-0.5">식단 기록이 있는 날의 일평균 섭취 열량과 권장 목표선 비교</p>
+          </div>
+
+          <div class="h-56 flex justify-center items-center">
+            <canvas id="weeklyCalorieComboChart"></canvas>
+          </div>
+
+          <div id="weeklyCalorieCaption" class="text-[11px] text-stone-500 bg-stone-50 p-3 rounded-xl border border-stone-200 text-center font-semibold">
+            주차별 칼로리 편차 분석 중...
+          </div>
+        </div>
+
+        <!-- 2. 주차별 탄·단·지 목표 달성률 비교 (flex-1로 좌측 하단과 바닥선 일치) -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm border border-stone-200 flex-1 flex flex-col justify-between gap-4">
+          <div>
+            <h2 class="text-base font-bold text-stone-900">4. 주차별 탄·단·지 균형 달성률 (%)</h2>
+            <p class="text-xs text-stone-500 mt-0.5">3페이지 목표량(100%) 대비 각 주차에 실제 섭취한 영양소 달성 비율</p>
+          </div>
+
+          <div class="relative w-full flex-1 min-h-[200px] flex items-center justify-center">
+            <canvas id="weeklyMacroBarChart"></canvas>
+          </div>
+
+          <div id="macroBalanceFooter" class="grid grid-cols-3 gap-2 pt-3 border-t border-stone-100 text-center"></div>
+        </div>
+
+      </section>
+
+    </div>
+  </main>
+
+  <script>
+    let calorieChartInstance = null;
+    let macroBarChartInstance = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      checkDemoState();
+      renderMonthlyReport();
+    });
+
+    // 3페이지와 동일한 Katch-McArdle 목표 산출 함수
+    function getProfileTargets() {
+      const saved = localStorage.getItem('nutri_profile');
+      const p = saved ? JSON.parse(saved) : {
+        weight: 58, bodyFat: 22, activity: 1.375, goal: 'cut', mealsPerDay: 3, fastingGoalHours: 16
+      };
+      const lbm = p.weight * (1 - p.bodyFat / 100);
+      const bmr = 370 + (21.6 * lbm);
+      let tdee = bmr * p.activity;
+      if (p.goal === 'cut') tdee -= 400;
+      else if (p.goal === 'bulk') tdee += 300;
+
+      const targetKcal = Math.round(tdee);
+      const targetProtein = Math.round(p.weight * 2.0);
+      const targetFat = Math.round((targetKcal * 0.25) / 9);
+      const targetCarb = Math.max(50, Math.round((targetKcal - (targetProtein * 4) - (targetFat * 9)) / 4));
+
+      return { ...p, targetKcal, targetCarb, targetProtein, targetFat };
+    }
+
+    function toDateKey(ms) {
+      const d = new Date(ms);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    // 주차 계산 (1~7일: 1주차, 8~14일: 2주차, 15~21일: 3주차, 22일~말일: 4주차)
+    function getWeekIndexOfMonth(dayOfMonth) {
+      if (dayOfMonth <= 7) return 0;
+      if (dayOfMonth <= 14) return 1;
+      if (dayOfMonth <= 21) return 2;
+      return 3;
+    }
+
+    function renderMonthlyReport() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const firstDayDow = new Date(year, month, 1).getDay();
+
+      document.getElementById('currentMonthBadge').textContent = `${year}년 ${month + 1}월`;
+
+      const targets = getProfileTargets();
+      const mealLogs = JSON.parse(localStorage.getItem('nutri_logs') || '[]');
+      const workoutLogs = JSON.parse(localStorage.getItem('nutri_workout_logs') || '[]');
+      const waterLogs = JSON.parse(localStorage.getItem('nutri_water_logs') || '[]');
+      const waterFallback = JSON.parse(localStorage.getItem('nutri_water_data') || '{}');
+      const fastingHistory = JSON.parse(localStorage.getItem('fasting_history_list') || '[]');
+
+      // 일별 데이터 버킷 초기화 (1일 ~ 말일)
+      const dayMap = {};
+      for (let d = 1; d <= daysInMonth; d++) {
+        const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        dayMap[key] = {
+          day: d,
+          weekIdx: getWeekIndexOfMonth(d),
+          kcal: 0, carb: 0, protein: 0, fat: 0, mealCount: 0,
+          workoutKcal: 0, workoutCount: 0, workoutDescs: [],
+          waterMl: 0
+        };
+      }
+
+      // 1) 식단 로그 집계 (timestamp 기준)
+      mealLogs.forEach(m => {
+        const ts = m.timestamp || m.id || Date.now();
+        const key = toDateKey(ts);
+        if (dayMap[key]) {
+          dayMap[key].kcal += Number(m.kcal) || 0;
+          dayMap[key].carb += Number(m.carb) || 0;
+          dayMap[key].protein += Number(m.protein) || 0;
+          dayMap[key].fat += Number(m.fat) || 0;
+          dayMap[key].mealCount += 1;
+        }
+      });
+
+      // 2) 운동 로그 집계 (id 타임스탬프 기준)
+      workoutLogs.forEach(w => {
+        const ts = w.id || Date.now();
+        const key = toDateKey(ts);
+        if (dayMap[key]) {
+          dayMap[key].workoutKcal += Number(w.kcal) || 0;
+          dayMap[key].workoutCount += 1;
+          if (w.desc) dayMap[key].workoutDescs.push(w.desc);
+        }
+      });
+
+      // 3) 수분 로그 집계 (1페이지의 nutri_water_logs 배열 및 nutri_water_data 호환)
+      waterLogs.forEach(wl => {
+        const ts = wl.id || Date.now();
+        const key = toDateKey(ts);
+        if (dayMap[key]) {
+          dayMap[key].waterMl += Number(wl.ml) || 0;
+        }
+      });
+      if (waterFallback && waterFallback.date && dayMap[waterFallback.date] && dayMap[waterFallback.date].waterMl === 0) {
+        dayMap[waterFallback.date].waterMl = Number(waterFallback.ml) || 0;
+      }
+
+      // 전체 월간 통계 및 주차별(4개 주차) 집계
+      let totalWorkoutDays = 0, totalWorkoutKcal = 0;
+      let totalDietRecordedDays = 0, totalDietGoodDays = 0;
+      let totalWaterGoalDays = 0, totalWaterSum = 0, totalWaterRecordedDays = 0;
+
+      const weeks = [
+        { label: '1주차 (1~7일)', workoutDays: 0, workoutKcal: 0, dietDays: 0, kcalSum: 0, carbSum: 0, proSum: 0, fatSum: 0, waterSum: 0, waterDays: 0 },
+        { label: '2주차 (8~14일)', workoutDays: 0, workoutKcal: 0, dietDays: 0, kcalSum: 0, carbSum: 0, proSum: 0, fatSum: 0, waterSum: 0, waterDays: 0 },
+        { label: '3주차 (15~21일)', workoutDays: 0, workoutKcal: 0, dietDays: 0, kcalSum: 0, carbSum: 0, proSum: 0, fatSum: 0, waterSum: 0, waterDays: 0 },
+        { label: `4주차 (22~${daysInMonth}일)`, workoutDays: 0, workoutKcal: 0, dietDays: 0, kcalSum: 0, carbSum: 0, proSum: 0, fatSum: 0, waterSum: 0, waterDays: 0 }
+      ];
+
+      Object.values(dayMap).forEach(info => {
+        const w = weeks[info.weekIdx];
+        if (info.workoutKcal > 0) {
+          totalWorkoutDays += 1;
+          totalWorkoutKcal += info.workoutKcal;
+          w.workoutDays += 1;
+          w.workoutKcal += info.workoutKcal;
+        }
+        if (info.kcal > 0) {
+          totalDietRecordedDays += 1;
+          w.dietDays += 1;
+          w.kcalSum += info.kcal;
+          w.carbSum += info.carb;
+          w.proSum += info.protein;
+          w.fatSum += info.fat;
+
+          // 목표 열량의 80% ~ 115% 사이면 적정 준수일로 판정
+          const allowedMax = (targets.targetKcal + info.workoutKcal) * 1.15;
+          const allowedMin = targets.targetKcal * 0.80;
+          if (info.kcal >= allowedMin && info.kcal <= allowedMax) {
+            totalDietGoodDays += 1;
+          }
+        }
+        if (info.waterMl > 0) {
+          totalWaterRecordedDays += 1;
+          totalWaterSum += info.waterMl;
+          w.waterDays += 1;
+          w.waterSum += info.waterMl;
+          if (info.waterMl >= 2000) totalWaterGoalDays += 1;
+        }
+      });
+
+      // 상단 4대 요약 카드 업데이트
+      document.getElementById('statWorkoutDays').textContent = `${totalWorkoutDays}일`;
+      document.getElementById('statWorkoutKcal').textContent = `총 ${totalWorkoutKcal.toLocaleString()} kcal 소모`;
+      document.getElementById('statDietGoodDays').textContent = `${totalDietGoodDays}일`;
+      document.getElementById('statDietRecordedDays').textContent = `식단 기록 ${totalDietRecordedDays}일 중`;
+      document.getElementById('statWaterGoalDays').textContent = `${totalWaterGoalDays}일`;
+      const avgWater = totalWaterRecordedDays > 0 ? Math.round(totalWaterSum / totalWaterRecordedDays) : 0;
+      document.getElementById('statWaterAvg').textContent = `기록일 평균 ${avgWater.toLocaleString()} ml`;
+
+      const achievedFast = fastingHistory.filter(f => f.achieved).length;
+      document.getElementById('statFastingSuccess').textContent = `${achievedFast}회`;
+      document.getElementById('statFastingTotal').textContent = `누적 기록 ${fastingHistory.length}회 중`;
+
+      // 1) 캘린더 히트맵 렌더링
+      renderCalendarHeatmap(firstDayDow, daysInMonth, dayMap, now.getDate(), targets.targetKcal);
+
+      // 2) 주차별 진단 리스트 렌더링
+      renderWeeklyBreakdown(weeks, targets);
+
+      // 3) 우측 상단 & 하단 차트 렌더링
+      renderWeeklyCharts(weeks, targets);
+
+      // 4) 상단 AI 종합 브리핑 문구 생성
+      renderMonthlyBriefing(weeks, totalWorkoutDays, totalWorkoutKcal, totalDietRecordedDays, totalDietGoodDays, avgWater);
+    }
+
+    function renderCalendarHeatmap(firstDayDow, daysInMonth, dayMap, todayDate, targetKcal) {
+      const grid = document.getElementById('calendarHeatmapGrid');
+      let html = '';
+
+      // 1일 이전 빈 칸
+      for (let i = 0; i < firstDayDow; i++) {
+        html += `<div class="h-14 rounded-2xl bg-stone-50/50 border border-dashed border-stone-200/60"></div>`;
+      }
+
+      Object.values(dayMap).forEach(info => {
+        let bgClass = 'bg-stone-50 border-stone-200 text-stone-700';
+        if (info.workoutKcal >= 350) {
+          bgClass = 'bg-amber-600 border-amber-700 text-white shadow-sm';
+        } else if (info.workoutKcal >= 200) {
+          bgClass = 'bg-amber-400 border-amber-500 text-stone-900';
+        } else if (info.workoutKcal > 0) {
+          bgClass = 'bg-amber-200 border-amber-300 text-stone-800';
+        }
+
+        const isToday = info.day === todayDate;
+        const todayRing = isToday ? 'ring-2 ring-emerald-600 ring-offset-1' : '';
+
+        // 식단 적정 여부 점 표시 (초록: 적정, 빨강: 과식, 회색: 미기록)
+        let dietDot = '';
+        if (info.kcal > 0) {
+          const isOver = info.kcal > (targetKcal + info.workoutKcal) * 1.15;
+          dietDot = `<span class="w-2 h-2 rounded-full ${isOver ? 'bg-rose-500' : 'bg-emerald-500'}" title="섭취: ${Math.round(info.kcal)}kcal"></span>`;
+        }
+
+        const waterIcon = info.waterMl >= 1500 ? `<span class="text-[10px]" title="수분 ${info.waterMl}ml">💧</span>` : '';
+
+        html += `
+          <div class="h-14 rounded-2xl border p-1.5 flex flex-col justify-between transition hover:scale-[1.03] ${bgClass} ${todayRing}"
+               title="${info.day}일 | 식단: ${Math.round(info.kcal)}kcal | 운동: ${info.workoutKcal}kcal | 수분: ${info.waterMl}ml">
+            <div class="flex justify-between items-center">
+              <span class="text-[11px] font-extrabold leading-none">${info.day}${isToday ? '·오늘' : ''}</span>
+              <div class="flex items-center gap-0.5">${waterIcon}${dietDot}</div>
+            </div>
+            <div class="text-right">
+              ${info.workoutKcal > 0
+                ? `<span class="text-[10px] font-black leading-none">🔥${info.workoutKcal}</span>`
+                : `<span class="text-[9px] opacity-40 leading-none">-</span>`}
+            </div>
+          </div>
+        `;
+      });
+
+      grid.innerHTML = html;
+    }
+
+    function renderWeeklyBreakdown(weeks, targets) {
+      const container = document.getElementById('weeklyBreakdownList');
+
+      container.innerHTML = weeks.map((w, idx) => {
+        const avgKcal = w.dietDays > 0 ? Math.round(w.kcalSum / w.dietDays) : 0;
+        const avgPro = w.dietDays > 0 ? Math.round(w.proSum / w.dietDays) : 0;
+        const avgWater = w.waterDays > 0 ? Math.round(w.waterSum / w.waterDays) : 0;
+
+        let workoutBadge = `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-stone-200 text-stone-600">운동 부족 (${w.workoutDays}회)</span>`;
+        if (w.workoutDays >= 4) {
+          workoutBadge = `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800">운동 우수 (${w.workoutDays}회)</span>`;
+        } else if (w.workoutDays >= 2) {
+          workoutBadge = `<span class="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800">보통 (${w.workoutDays}회)</span>`;
+        }
+
+        let dietStatus = '식단 기록 없음';
+        let dietColor = 'text-stone-400';
+        if (avgKcal > 0) {
+          const diff = avgKcal - targets.targetKcal;
+          if (Math.abs(diff) <= 250) {
+            dietStatus = `목표 잘 지킴 (일평균 ${avgKcal.toLocaleString()}kcal · 단백질 ${avgPro}g)`;
+            dietColor = 'text-emerald-700 font-bold';
+          } else if (diff > 250) {
+            dietStatus = `열량 초과 주의 (일평균 ${avgKcal.toLocaleString()}kcal · +${diff}kcal)`;
+            dietColor = 'text-rose-600 font-bold';
+          } else {
+            dietStatus = `열량 다소 부족 (일평균 ${avgKcal.toLocaleString()}kcal)`;
+            dietColor = 'text-amber-700 font-semibold';
+          }
+        }
+
+        return `
+          <div class="p-3.5 rounded-2xl border border-stone-200 bg-stone-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div class="space-y-1">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-extrabold text-stone-900">${w.label}</span>
+                ${workoutBadge}
+                <span class="text-[11px] font-semibold text-sky-700">💧 평균 ${avgWater}ml</span>
+              </div>
+              <p class="text-xs ${dietColor}">${dietStatus}</p>
+            </div>
+            <div class="text-right shrink-0">
+              <span class="text-xs font-extrabold text-amber-700">🔥 주간 운동 ${w.workoutKcal.toLocaleString()} kcal</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderWeeklyCharts(weeks, targets) {
+      const labels = ['1주차', '2주차', '3주차', '4주차'];
+      const avgIntakeData = weeks.map(w => w.dietDays > 0 ? Math.round(w.kcalSum / w.dietDays) : 0);
+      const targetLineData = [targets.targetKcal, targets.targetKcal, targets.targetKcal, targets.targetKcal];
+
+      // 1) 주차별 칼로리 콤보 차트
+      const ctxCal = document.getElementById('weeklyCalorieComboChart').getContext('2d');
+      if (calorieChartInstance) calorieChartInstance.destroy();
+      calorieChartInstance = new Chart(ctxCal, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              type: 'line',
+              label: `권장 목표 (${targets.targetKcal}kcal)`,
+              data: targetLineData,
+              borderColor: '#f43f5e',
+              borderWidth: 2,
+              borderDash: [5, 4],
+              pointRadius: 3,
+              fill: false
+            },
+            {
+              type: 'bar',
+              label: '일평균 섭취 열량(kcal)',
+              data: avgIntakeData,
+              backgroundColor: '#10b981',
+              borderRadius: 8
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+
+      const recordedWeeks = weeks.filter(w => w.dietDays > 0);
+      const capEl = document.getElementById('weeklyCalorieCaption');
+      if (recordedWeeks.length === 0) {
+        capEl.textContent = '아직 식단 기록이 없습니다. 상단의 [발표용 1개월 샘플 채우기]를 눌러 그래프를 확인해 보세요!';
+      } else {
+        capEl.textContent = `권장 목표(${targets.targetKcal.toLocaleString()}kcal) 대비 주차별 일평균 섭취 추이입니다.`;
+      }
+
+      // 2) 주차별 탄·단·지 목표 대비 달성률(%) 차트
+      const carbPctArr = weeks.map(w => w.dietDays > 0 ? Math.min(140, Math.round((w.carbSum / w.dietDays / targets.targetCarb) * 100)) : 0);
+      const proPctArr  = weeks.map(w => w.dietDays > 0 ? Math.min(140, Math.round((w.proSum / w.dietDays / targets.targetProtein) * 100)) : 0);
+      const fatPctArr  = weeks.map(w => w.dietDays > 0 ? Math.min(140, Math.round((w.fatSum / w.dietDays / targets.targetFat) * 100)) : 0);
+
+      const ctxMacro = document.getElementById('weeklyMacroBarChart').getContext('2d');
+      if (macroBarChartInstance) macroBarChartInstance.destroy();
+      macroBarChartInstance = new Chart(ctxMacro, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            { label: '탄수화물 달성률(%)', data: carbPctArr, backgroundColor: '#f59e0b', borderRadius: 4 },
+            { label: '단백질 달성률(%)', data: proPctArr, backgroundColor: '#10b981', borderRadius: 4 },
+            { label: '지방 달성률(%)', data: fatPctArr, backgroundColor: '#f43f5e', borderRadius: 4 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 140,
+              ticks: { callback: v => v + '%' }
+            }
+          }
+        }
+      });
+
+      // 하단 탄단지 월평균 달성률 요약
+      const avgPct = arr => {
+        const valid = arr.filter(v => v > 0);
+        return valid.length > 0 ? Math.round(valid.reduce((a, b) => a + b, 0) / valid.length) : 0;
+      };
+      const mCarb = avgPct(carbPctArr), mPro = avgPct(proPctArr), mFat = avgPct(fatPctArr);
+
+      document.getElementById('macroBalanceFooter').innerHTML = `
+        <div class="bg-amber-50 p-2.5 rounded-xl border border-amber-200/70">
+          <p class="text-[11px] font-bold text-amber-800">월평균 탄수화물</p>
+          <p class="text-sm font-black text-amber-950 mt-0.5">${mCarb}% 달성</p>
+        </div>
+        <div class="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200/70">
+          <p class="text-[11px] font-bold text-emerald-800">월평균 단백질</p>
+          <p class="text-sm font-black text-emerald-950 mt-0.5">${mPro}% 달성</p>
+        </div>
+        <div class="bg-rose-50 p-2.5 rounded-xl border border-rose-200/70">
+          <p class="text-[11px] font-bold text-rose-800">월평균 지방</p>
+          <p class="text-sm font-black text-rose-950 mt-0.5">${mFat}% 달성</p>
+        </div>
+      `;
+    }
+
+    function renderMonthlyBriefing(weeks, totalWorkoutDays, totalWorkoutKcal, totalDietRecordedDays, totalDietGoodDays, avgWater) {
+      const box = document.getElementById('monthlyAiCommentBox');
+      if (totalWorkoutDays === 0 && totalDietRecordedDays === 0) {
+        box.innerHTML = `📌 <strong>아직 이번 달 누적 기록이 많지 않습니다.</strong> 1·2페이지에서 오늘의 식단과 운동을 기록하거나, 우측 상단의 <strong>[🧪 발표용 1개월 샘플 채우기]</strong> 버튼을 눌러 월간 분석 시뮬레이션을 즉시 테스트해 보세요!`;
+        return;
+      }
+
+      // 운동을 가장 많이 간 주와 가장 적게 간 주 탐색
+      let bestWeekIdx = 0, worstWeekIdx = 0;
+      weeks.forEach((w, i) => {
+        if (w.workoutDays > weeks[bestWeekIdx].workoutDays) bestWeekIdx = i;
+        if (w.workoutDays < weeks[worstWeekIdx].workoutDays) worstWeekIdx = i;
+      });
+
+      box.innerHTML =
+        `📊 <strong>[이번 달 종합 진단]</strong> 이번 달은 총 <strong>${totalWorkoutDays}일(${totalWorkoutKcal.toLocaleString()}kcal 소모)</strong> 운동하셨으며, 식단 기록 ${totalDietRecordedDays}일 중 <strong>${totalDietGoodDays}일</strong> 동안 목표 열량을 안정적으로 지켰습니다.<br>` +
+        `👉 <strong>주차별 패턴:</strong> <strong>${bestWeekIdx + 1}주차(${weeks[bestWeekIdx].workoutDays}회)</strong>에 운동 참여도가 가장 높았고, 상대적으로 <strong>${worstWeekIdx + 1}주차(${weeks[worstWeekIdx].workoutDays}회)</strong>에 활동량이 저조했습니다. 일평균 수분 섭취량은 <strong>${avgWater.toLocaleString()}ml</strong>입니다.`;
+    }
+
+    // =========================================================================
+    // 발표 및 테스트용 1개월 샘플 데이터 원클릭 생성/삭제 (isDemo 태그로 안전 분리)
+    // =========================================================================
+    function checkDemoState() {
+      const hasDemo = localStorage.getItem('nutri_demo_injected') === 'true';
+      document.getElementById('clearDemoBtn').classList.toggle('hidden', !hasDemo);
+    }
+
+    function injectDemoMonthData() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const todayDate = now.getDate();
+      const targets = getProfileTargets();
+
+      const mealLogs = JSON.parse(localStorage.getItem('nutri_logs') || '[]').filter(x => !x.isDemo);
+      const workoutLogs = JSON.parse(localStorage.getItem('nutri_workout_logs') || '[]').filter(x => !x.isDemo);
+      const waterLogs = JSON.parse(localStorage.getItem('nutri_water_logs') || '[]').filter(x => !x.isDemo);
+
+      const sampleWorkouts = [
+        { desc: '조깅 / 러닝 (40분)', minutes: 40, kcal: 290 },
+        { desc: '복싱 / 줄넘기 (50분)', minutes: 50, kcal: 440 },
+        { desc: '웨이트 트레이닝 (60분)', minutes: 60, kcal: 310 },
+        { desc: '빠르게 걷기 / 사이클 (30분)', minutes: 30, kcal: 165 }
+      ];
+
+      // 1일부터 어제까지 자연스러운 주차별 패턴 생성 (2주차는 운동 살짝 부진, 3주차는 열량 초과 등 드라마틱한 분석 연출)
+      const maxDay = Math.max(25, todayDate);
+      for (let d = 1; d <= maxDay; d++) {
+        if (d === todayDate) continue; // 오늘 실제 기록은 보존
+        const ts = new Date(year, month, d, 13, 0, 0).getTime();
+
+        // 식단 샘플 (3주차 일부 날짜는 치팅데이처럼 약간 초과 연출)
+        const isCheatDay = (d === 16 || d === 19);
+        const factor = isCheatDay ? 1.25 : (0.92 + (d % 3) * 0.05);
+        mealLogs.push({
+          isDemo: true,
+          badge: '식단기록',
+          name: isCheatDay ? '외식 치팅데이 세트' : '균형 식단 세트',
+          mealSlot: 1,
+          timestamp: ts,
+          kcal: Math.round(targets.targetKcal * factor),
+          carb: Math.round(targets.targetCarb * factor),
+          protein: Math.round(targets.targetProtein * (isCheatDay ? 0.85 : 1.02)),
+          fat: Math.round(targets.targetFat * factor)
+        });
+
+        // 운동 샘플 (1·3·4주차는 주 4~5회, 2주차는 주 1~2회로 편차 부여)
+        const weekIdx = getWeekIndexOfMonth(d);
+        const doWorkout = (weekIdx === 1) ? (d % 4 === 0) : (d % 2 === 1 || d % 5 === 0);
+        if (doWorkout) {
+          const pick = sampleWorkouts[d % sampleWorkouts.length];
+          workoutLogs.push({
+            isDemo: true,
+            id: ts + d,
+            desc: pick.desc,
+            minutes: pick.minutes,
+            kcal: pick.kcal
+          });
+        }
+
+        // 수분 샘플 (1500ml ~ 2250ml)
+        waterLogs.push({
+          isDemo: true,
+          id: ts + 100 + d,
+          ml: (d % 3 === 0) ? 2250 : ((d % 2 === 0) ? 2000 : 1500)
+        });
+      }
+
+      localStorage.setItem('nutri_logs', JSON.stringify(mealLogs));
+      localStorage.setItem('nutri_workout_logs', JSON.stringify(workoutLogs));
+      localStorage.setItem('nutri_water_logs', JSON.stringify(waterLogs));
+      localStorage.setItem('nutri_demo_injected', 'true');
+
+      checkDemoState();
+      renderMonthlyReport();
+    }
+
+    function clearDemoMonthData() {
+      const mealLogs = JSON.parse(localStorage.getItem('nutri_logs') || '[]').filter(x => !x.isDemo);
+      const workoutLogs = JSON.parse(localStorage.getItem('nutri_workout_logs') || '[]').filter(x => !x.isDemo);
+      const waterLogs = JSON.parse(localStorage.getItem('nutri_water_logs') || '[]').filter(x => !x.isDemo);
+
+      localStorage.setItem('nutri_logs', JSON.stringify(mealLogs));
+      localStorage.setItem('nutri_workout_logs', JSON.stringify(workoutLogs));
+      localStorage.setItem('nutri_water_logs', JSON.stringify(waterLogs));
+      localStorage.removeItem('nutri_demo_injected');
+
+      checkDemoState();
+      renderMonthlyReport();
+    }
+  </script>
+</body>
+</html>

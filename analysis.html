@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NutriFast AI - 영양 분석 및 AI 코칭</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>html { scroll-behavior: smooth; }</style>
+</head>
+<body class="bg-stone-50 text-stone-800 min-h-screen pb-12">
+
+  <!-- 상단 네비게이션 (common.js에서 렌더링) -->
+  <nav id="appNav" class="bg-emerald-900 text-white shadow-md sticky top-0 z-50"></nav>
+
+  <main class="max-w-5xl mx-auto px-4 mt-6 space-y-6">
+
+    <!-- 상단 배너 (common.js에서 렌더링) -->
+    <div id="appBanner"></div>
+    <script src="./common.js"></script>
+    <script>
+      NutriLayout.mount({
+        page: 'analysis',
+        badge: { text: '맞춤 목표' },
+        label: 'Katch-McArdle 알고리즘 기반',
+        title: '분석 · AI · 목표',
+        subtitle: { text: '신체 스펙으로 목표를 정하고, 차트로 확인하고, AI 코칭까지 받아 보세요.' },
+        actions:
+          NutriLayout.btn('secondary', '#sec-spec', '목표 설정') +
+          NutriLayout.btn('secondary', '#sec-chart', '차트') +
+          NutriLayout.btn('primary', '#sec-coach', 'AI 코치')
+      });
+    </script>
+
+    <!-- 섹션 1: 신체 스펙 및 식사 횟수/공복 목표 설정 -->
+    <section id="sec-spec" class="scroll-mt-20 bg-white rounded-3xl p-6 shadow-sm border border-stone-200">
+      <h2 class="text-lg font-bold text-stone-800 mb-1">신체 스펙 및 끼니·공복 목표 설정</h2>
+      <p class="text-xs text-stone-500 mb-4">체중과 체지방률을 기반으로 제지방량(LBM)과 기초대사량(BMR), 끼니별 목표 영양소를 자동 산출합니다.</p>
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-stone-600 mb-1">체중 (kg)</label>
+          <input id="weightInput" type="number" step="0.1" value="58" class="w-full border border-stone-300 rounded-xl px-3 py-2 text-sm font-bold">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-stone-600 mb-1">체지방률 (%)</label>
+          <input id="bodyFatInput" type="number" step="0.1" value="22" class="w-full border border-stone-300 rounded-xl px-3 py-2 text-sm font-bold">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-stone-600 mb-1">평소 운동량</label>
+          <select id="activitySelect" class="w-full border border-stone-300 rounded-xl px-3 py-2 text-sm bg-stone-50 font-semibold">
+            <option value="1.2">비활동적 (운동 거의 안 함)</option>
+            <option value="1.375" selected>가벼운 운동 (주 1~3회)</option>
+            <option value="1.55">보통 운동 (주 3~5회 복싱/러닝 등)</option>
+            <option value="1.725">강도 높은 운동 (주 6~7회)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-stone-600 mb-1">식단 목표</label>
+          <select id="goalSelect" class="w-full border border-stone-300 rounded-xl px-3 py-2 text-sm bg-stone-50 font-semibold">
+            <option value="cut" selected>체지방 감량 (-400 kcal)</option>
+            <option value="maintain">체중 및 근량 유지</option>
+            <option value="bulk">근육 증량 (+300 kcal)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-stone-600 mb-1">하루 식사 횟수</label>
+          <select id="mealsPerDaySelect" class="w-full border border-stone-300 rounded-xl px-3 py-2 text-sm bg-stone-50 font-semibold">
+            <option value="2">하루 2끼 (간헐적 단식형)</option>
+            <option value="3" selected>하루 3끼 (표준 균형형)</option>
+            <option value="4">하루 4끼 (운동 전후 분할형)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-stone-600 mb-1">목표 공복 시간</label>
+          <select id="fastingGoalSelect" class="w-full border border-stone-300 rounded-xl px-3 py-2 text-sm bg-stone-50 font-semibold">
+            <option value="14">14시간 (입문 단식)</option>
+            <option value="16" selected>16시간 (16:8 표준 단식)</option>
+            <option value="18">18시간 (집중 지방 연소)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-wrap justify-between items-center gap-3 bg-emerald-50 p-4 rounded-2xl border border-emerald-200">
+        <div id="calculatedSpecText" class="text-xs text-emerald-950 font-semibold">
+          계산 결과 로딩 중...
+        </div>
+        <button onclick="saveProfileSpec()" class="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-sm transition">
+          설정 저장 및 차트 업데이트
+        </button>
+      </div>
+    </section>
+
+    <!-- 섹션 2: Chart.js 데이터 시각화 -->
+    <section id="sec-chart" class="scroll-mt-20 grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="bg-white rounded-3xl p-6 shadow-sm border border-stone-200 flex flex-col justify-between">
+        <div>
+          <h2 class="text-base font-bold mb-1">목표 섭취 열량 영양소 비율</h2>
+          <p class="text-xs text-stone-500 mb-4">설정한 목표 달성을 위해 하루 동안 섭취해야 할 탄·단·지 비중</p>
+        </div>
+
+        <div class="h-48 flex justify-center items-center">
+          <canvas id="macroDoughnutChart"></canvas>
+        </div>
+
+        <div id="targetMacroTextSummary" class="grid grid-cols-3 gap-2 pt-4 mt-4 border-t border-stone-100 text-center">
+          <!-- JS 동적 업데이트 -->
+        </div>
+      </div>
+
+      <div class="bg-white rounded-3xl p-6 shadow-sm border border-stone-200 flex flex-col justify-between">
+        <div>
+          <h2 class="text-base font-bold mb-1">목표 대비 실제 섭취량 비교</h2>
+          <p class="text-xs text-stone-500 mb-4">권장 섭취량(g) 대비 오늘 현재 달성량(g) 시각화</p>
+        </div>
+        <div class="h-64 flex justify-center items-center">
+          <canvas id="macroBarChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- 섹션 4: AI 영양 코치 -->
+    <section id="sec-coach" class="scroll-mt-20 rounded-3xl overflow-hidden shadow-sm border border-stone-200 bg-white">
+
+      <!-- 헤더 -->
+      <div class="bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-700 text-white p-6">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-[10px] font-bold tracking-widest uppercase bg-white/10 border border-white/20 px-2.5 py-0.5 rounded-full">AI Nutrition Coach</span>
+              <span id="aiStatusChip" class="inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-white/10 border border-white/20">
+                <span id="aiStatusDot" class="w-1.5 h-1.5 rounded-full bg-amber-300"></span>
+                <span id="aiStatusText">연결 설정 필요</span>
+              </span>
+            </div>
+            <h2 class="text-xl font-bold mt-2.5 tracking-tight">AI 영양 코치</h2>
+            <p class="text-xs text-emerald-100/80 mt-1 leading-relaxed">체성분 · 공복 시간 · 오늘 섭취량을 종합해<br class="sm:hidden"> 다음 한 끼까지 제안합니다.</p>
+          </div>
+          <button onclick="openSettings()" title="연결 설정"
+            class="shrink-0 w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center transition">
+            <svg class="w-4.5 h-4.5" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="mt-6 flex flex-wrap items-center gap-5">
+          <!-- 달성도 링 -->
+          <div class="relative w-24 h-24 shrink-0">
+            <svg viewBox="0 0 100 100" class="w-24 h-24 -rotate-90">
+              <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="8"/>
+              <circle id="scoreRing" cx="50" cy="50" r="42" fill="none" stroke="#6ee7b7" stroke-width="8" stroke-linecap="round"
+                stroke-dasharray="263.9" stroke-dashoffset="263.9" style="transition: stroke-dashoffset .8s ease"/>
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center">
+              <span id="scoreText" class="text-2xl font-extrabold leading-none">–</span>
+              <span class="text-[9px] text-emerald-100/70 mt-0.5 tracking-wide">SCORE</span>
+            </div>
+          </div>
+          <div class="min-w-0">
+            <p class="text-sm font-bold">오늘의 영양 달성도</p>
+            <p id="scoreCaption" class="text-xs text-emerald-100/80 mt-1 leading-relaxed">식단을 기록하면 점수가 계산됩니다.</p>
+          </div>
+          <button id="coachBtn" onclick="runCoaching()"
+            class="sm:ml-auto w-full sm:w-auto bg-white text-emerald-900 hover:bg-emerald-50 font-bold text-sm px-6 py-3 rounded-2xl shadow-lg shadow-emerald-950/30 transition disabled:opacity-60">
+            AI 분석 실행
+          </button>
+        </div>
+      </div>
+
+      <!-- 본문 -->
+      <div class="p-6 space-y-4">
+        <div id="insightGrid" class="grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
+
+        <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-stone-100">
+          <p id="lastSentText" class="text-[11px] text-stone-400">마지막 발송: 기록 없음</p>
+          <button id="sendSmsBtn" onclick="openSendModal()"
+            class="bg-stone-900 hover:bg-stone-700 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition disabled:opacity-60">
+            리포트를 내 휴대폰으로 전송
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 연결 설정 모달 -->
+  <div id="settingsModal" class="hidden fixed inset-0 z-[60] bg-stone-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-xl w-full max-w-md p-6 space-y-4">
+      <div>
+        <h3 class="text-base font-bold">연결 설정</h3>
+        <p class="text-xs text-stone-500 mt-1 leading-relaxed">서버 주소와 PIN은 이 기기의 브라우저에만 저장되며, 페이지 코드에는 포함되지 않습니다.</p>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-bold text-stone-600 mb-1">서버 주소</label>
+          <input id="setUrlInput" type="password" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec"
+            class="w-full border border-stone-300 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:border-emerald-600">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-stone-600 mb-1">PIN</label>
+          <input id="setPinInput" type="password" inputmode="numeric" autocomplete="off" placeholder="서버에 설정한 PIN"
+            class="w-full border border-stone-300 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:border-emerald-600">
+        </div>
+      </div>
+      <p id="settingsResult" class="text-xs min-h-[1rem]"></p>
+      <div class="flex flex-wrap gap-2 justify-between">
+        <button onclick="clearSettings()" class="text-xs font-semibold text-rose-500 hover:underline">연결 정보 삭제</button>
+        <div class="flex gap-2">
+          <button onclick="testConnection()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-stone-100 text-stone-700 hover:bg-stone-200 transition">연결 테스트</button>
+          <button onclick="closeSettings()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-stone-100 text-stone-700 hover:bg-stone-200 transition">닫기</button>
+          <button onclick="saveSettings()" class="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-700 text-white hover:bg-emerald-800 transition">저장</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 전송 확인 모달 -->
+  <div id="sendModal" class="hidden fixed inset-0 z-[60] bg-stone-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-xl w-full max-w-md p-6 space-y-4">
+      <div>
+        <h3 class="text-base font-bold">전송 내용 확인</h3>
+        <p class="text-xs text-stone-500 mt-1">등록된 내 휴대폰 번호로 아래 내용이 문자로 발송됩니다.</p>
+      </div>
+      <div class="grid grid-cols-2 gap-1 bg-stone-100 p-1 rounded-xl">
+        <button id="modeBrief" onclick="setSendMode('brief')" class="py-2 rounded-lg text-xs font-bold transition">간단히 <span class="font-normal opacity-70">· 단문</span></button>
+        <button id="modeDetail" onclick="setSendMode('detail')" class="py-2 rounded-lg text-xs font-bold transition">자세히 <span class="font-normal opacity-70">· 장문</span></button>
+      </div>
+      <pre id="sendPreview" class="bg-stone-50 border border-stone-200 rounded-2xl p-4 text-xs leading-relaxed whitespace-pre-wrap font-sans max-h-64 overflow-y-auto"></pre>
+      <p id="sendMeta" class="text-[11px] text-stone-400 -mt-2"></p>
+      <div class="flex justify-end gap-2">
+        <button onclick="closeSendModal()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-stone-100 text-stone-700 hover:bg-stone-200 transition">취소</button>
+        <button id="confirmSendBtn" onclick="confirmSend()" class="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-700 text-white hover:bg-emerald-800 transition disabled:opacity-60">전송하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 토스트 -->
+  <div id="toastBox" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] flex flex-col items-center gap-2 pointer-events-none"></div>
+
+  <script>
+    let doughnutChartInstance = null;
+    let barChartInstance = null;
+    let lastCoaching = null;   // { data, source }
+
+    const LS_URL = 'nutri_gas_url';
+    const LS_PIN = 'nutri_gas_pin';
+    const LS_LAST_SENT = 'nutri_last_sms';
+    const RING_C = 263.9;
+
+    /* =====================================================================
+       프로필 / 목표 계산 / 차트 (기존 로직 유지)
+    ===================================================================== */
+    function loadProfileToForm() {
+      const saved = localStorage.getItem('nutri_profile');
+      const p = saved ? JSON.parse(saved) : {
+        weight: 58, bodyFat: 22, activity: 1.375, goal: 'cut', mealsPerDay: 3, fastingGoalHours: 16
+      };
+
+      document.getElementById('weightInput').value = p.weight;
+      document.getElementById('bodyFatInput').value = p.bodyFat;
+      document.getElementById('activitySelect').value = p.activity;
+      document.getElementById('goalSelect').value = p.goal;
+      document.getElementById('mealsPerDaySelect').value = p.mealsPerDay;
+      document.getElementById('fastingGoalSelect').value = p.fastingGoalHours || p.fastingHours || 16;
+
+      renderAnalysis(p);
+    }
+
+    function calculateTargets(p) {
+      const lbm = p.weight * (1 - p.bodyFat / 100);
+      const bmr = 370 + (21.6 * lbm);
+      let tdee = bmr * p.activity;
+      if (p.goal === 'cut') tdee -= 400;
+      else if (p.goal === 'bulk') tdee += 300;
+
+      const targetKcal = Math.round(tdee);
+      const targetProtein = Math.round(p.weight * 2.0);
+      const targetFat = Math.round((targetKcal * 0.25) / 9);
+      const targetCarb = Math.max(50, Math.round((targetKcal - (targetProtein * 4) - (targetFat * 9)) / 4));
+
+      return {
+        lbm: lbm.toFixed(1),
+        bmr: Math.round(bmr),
+        targetKcal,
+        targetCarb,
+        targetProtein,
+        targetFat
+      };
+    }
+
+    function saveProfileSpec() {
+      const fastingVal = parseInt(document.getElementById('fastingGoalSelect').value, 10) || 16;
+      const profile = {
+        weight: parseFloat(document.getElementById('weightInput').value) || 58,
+        bodyFat: parseFloat(document.getElementById('bodyFatInput').value) || 22,
+        activity: parseFloat(document.getElementById('activitySelect').value) || 1.375,
+        goal: document.getElementById('goalSelect').value,
+        mealsPerDay: parseInt(document.getElementById('mealsPerDaySelect').value, 10) || 3,
+        fastingGoalHours: fastingVal,
+        fastingHours: fastingVal
+      };
+      localStorage.setItem('nutri_profile', JSON.stringify(profile));
+      renderAnalysis(profile);
+      toast('신체 목표와 권장 탄·단·지 비율이 업데이트되었습니다.');
+    }
+
+    function getProfile() {
+      return JSON.parse(localStorage.getItem('nutri_profile') ||
+        '{"weight":58,"bodyFat":22,"activity":1.375,"goal":"cut","mealsPerDay":3,"fastingGoalHours":16}');
+    }
+
+    // 시각 정보가 있는 기록은 '오늘' 것만 사용 (월간 샘플·지난 기록이 합산되지 않도록)
+    function isTodayLog(l) {
+      const ts = Number(l.timestamp);
+      if (!ts) return true;   // 시각 정보가 없는 예전 기록은 오늘 기록으로 간주
+      const d = new Date(ts), n = new Date();
+      return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+    }
+
+    function getIntake() {
+      const logs = JSON.parse(localStorage.getItem('nutri_logs') || '[]').filter(isTodayLog);
+      let kcal = 0, carb = 0, protein = 0, fat = 0;
+      logs.forEach(l => {
+        kcal += Number(l.kcal) || 0;
+        carb += Number(l.carb) || 0;
+        protein += Number(l.protein) || 0;
+        fat += Number(l.fat) || 0;
+      });
+      return { kcal, carb, protein, fat };
+    }
+
+    function renderAnalysis(profile) {
+      const t = calculateTargets(profile);
+      const perMealPro = Math.round(t.targetProtein / profile.mealsPerDay);
+      const perMealKcal = Math.round(t.targetKcal / profile.mealsPerDay);
+
+      document.getElementById('calculatedSpecText').innerHTML =
+        `제지방량(LBM): <strong>${t.lbm}kg</strong> | 기초대사량(BMR): <strong>${t.bmr}kcal</strong> | 일일 권장 섭취: <strong>${t.targetKcal}kcal</strong> (탄 ${t.targetCarb}g, 단 ${t.targetProtein}g, 지 ${t.targetFat}g)<br>` +
+        `👉 하루 ${profile.mealsPerDay}끼 기준 <strong>한 끼당 약 ${perMealKcal}kcal (단백질 ${perMealPro}g)</strong> 섭취를 권장합니다.`;
+
+      const targetCarbKcal = t.targetCarb * 4;
+      const targetProKcal = t.targetProtein * 4;
+      const targetFatKcal = t.targetFat * 9;
+      const totalTargetMacroKcal = targetCarbKcal + targetProKcal + targetFatKcal;
+
+      const carbPct = Math.round((targetCarbKcal / totalTargetMacroKcal) * 100);
+      const proPct = Math.round((targetProKcal / totalTargetMacroKcal) * 100);
+      const fatPct = Math.max(0, 100 - carbPct - proPct);
+
+      // 1. 도넛 차트
+      const ctxDoughnut = document.getElementById('macroDoughnutChart').getContext('2d');
+      if (doughnutChartInstance) doughnutChartInstance.destroy();
+      doughnutChartInstance = new Chart(ctxDoughnut, {
+        type: 'doughnut',
+        data: {
+          labels: [
+            `탄수화물 ${carbPct}% (${t.targetCarb}g)`,
+            `단백질 ${proPct}% (${t.targetProtein}g)`,
+            `지방 ${fatPct}% (${t.targetFat}g)`
+          ],
+          datasets: [{
+            data: [targetCarbKcal, targetProKcal, targetFatKcal],
+            backgroundColor: ['#f59e0b', '#10b981', '#f43f5e'],
+            borderWidth: 2,
+            borderColor: '#ffffff'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '65%',
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: function (context) {
+                  return ` ${context.label.split(' ')[0]}: ${context.raw} kcal`;
+                }
+              }
+            }
+          }
+        }
+      });
+
+      document.getElementById('targetMacroTextSummary').innerHTML = `
+        <div class="bg-amber-50 p-2.5 rounded-xl border border-amber-200/70">
+          <p class="text-[11px] font-bold text-amber-800">탄수화물 (${carbPct}%)</p>
+          <p class="text-sm font-extrabold text-amber-950 mt-0.5">${t.targetCarb}g</p>
+          <p class="text-[10px] text-amber-700 font-medium">${targetCarbKcal} kcal</p>
+        </div>
+        <div class="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200/70">
+          <p class="text-[11px] font-bold text-emerald-800">단백질 (${proPct}%)</p>
+          <p class="text-sm font-extrabold text-emerald-950 mt-0.5">${t.targetProtein}g</p>
+          <p class="text-[10px] text-emerald-700 font-medium">${targetProKcal} kcal</p>
+        </div>
+        <div class="bg-rose-50 p-2.5 rounded-xl border border-rose-200/70">
+          <p class="text-[11px] font-bold text-rose-800">지방 (${fatPct}%)</p>
+          <p class="text-sm font-extrabold text-rose-950 mt-0.5">${t.targetFat}g</p>
+          <p class="text-[10px] text-rose-700 font-medium">${targetFatKcal} kcal</p>
+        </div>
+      `;
+
+      const intake = getIntake();
+      const dCarb = Math.round(intake.carb);
+      const dPro = Math.round(intake.protein);
+      const dFat = Math.round(intake.fat);
+
+      // 2. 막대 차트
+      const ctxBar = document.getElementById('macroBarChart').getContext('2d');
+      if (barChartInstance) barChartInstance.destroy();
+      barChartInstance = new Chart(ctxBar, {
+        type: 'bar',
+        data: {
+          labels: ['탄수화물(g)', '단백질(g)', '지방(g)'],
+          datasets: [
+            { label: '목표 권장량(g)', data: [t.targetCarb, t.targetProtein, t.targetFat], backgroundColor: '#d6d3d1' },
+            { label: '현재 섭취량(g)', data: [dCarb, dPro, dFat], backgroundColor: '#059669' }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      refreshScore();
+    }
+
+    /* =====================================================================
+       공통 UI: 이스케이프 / 토스트 / 모달
+    ===================================================================== */
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    function toast(msg, type) {
+      const box = document.getElementById('toastBox');
+      const el = document.createElement('div');
+      const color = type === 'error' ? 'bg-rose-600' : (type === 'warn' ? 'bg-amber-600' : 'bg-stone-900');
+      el.className = `${color} text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-lg opacity-0 translate-y-2 transition-all duration-300 max-w-xs text-center`;
+      el.textContent = msg;
+      box.appendChild(el);
+      requestAnimationFrame(() => { el.classList.remove('opacity-0', 'translate-y-2'); });
+      setTimeout(() => {
+        el.classList.add('opacity-0');
+        setTimeout(() => el.remove(), 300);
+      }, 3200);
+    }
+
+    /* =====================================================================
+       연결 설정 (서버 주소/PIN은 이 브라우저에만 저장, 코드에는 없음)
+    ===================================================================== */
+    function getConn() {
+      const url = (localStorage.getItem(LS_URL) || '').trim();
+      const pin = (localStorage.getItem(LS_PIN) || '').trim();
+      return (url && pin) ? { url, pin } : null;
+    }
+
+    function setChip(state) {
+      const dot = document.getElementById('aiStatusDot');
+      const text = document.getElementById('aiStatusText');
+      const map = {
+        setup:   ['bg-amber-300',   '연결 설정 필요'],
+        ready:   ['bg-emerald-300', '연결됨 · 분석 대기'],
+        gemini:  ['bg-emerald-300', 'Gemini 분석'],
+        builtin: ['bg-sky-300',     '내장 분석 모드']
+      };
+      const [cls, label] = map[state] || map.setup;
+      dot.className = `w-1.5 h-1.5 rounded-full ${cls}`;
+      text.textContent = label;
+    }
+
+    function openSettings() {
+      document.getElementById('setUrlInput').value = localStorage.getItem(LS_URL) || '';
+      document.getElementById('setPinInput').value = localStorage.getItem(LS_PIN) || '';
+      document.getElementById('settingsResult').textContent = '';
+      document.getElementById('settingsModal').classList.remove('hidden');
+    }
+
+    function closeSettings() {
+      document.getElementById('settingsModal').classList.add('hidden');
+    }
+
+    function saveSettings() {
+      const url = document.getElementById('setUrlInput').value.trim();
+      const pin = document.getElementById('setPinInput').value.trim();
+      if (!url.startsWith('https://script.google.com/')) {
+        showSettingsResult('서버 주소 형식이 올바르지 않습니다.', 'error');
+        return;
+      }
+      if (!pin) {
+        showSettingsResult('PIN을 입력해 주세요.', 'error');
+        return;
+      }
+      localStorage.setItem(LS_URL, url);
+      localStorage.setItem(LS_PIN, pin);
+      setChip('ready');
+      closeSettings();
+      toast('연결 정보가 저장되었습니다.');
+    }
+
+    function clearSettings() {
+      localStorage.removeItem(LS_URL);
+      localStorage.removeItem(LS_PIN);
+      document.getElementById('setUrlInput').value = '';
+      document.getElementById('setPinInput').value = '';
+      setChip('setup');
+      showSettingsResult('연결 정보를 삭제했습니다.', 'ok');
+    }
+
+    function showSettingsResult(msg, type) {
+      const el = document.getElementById('settingsResult');
+      el.textContent = msg;
+      el.className = 'text-xs min-h-[1rem] ' + (type === 'error' ? 'text-rose-600' : 'text-emerald-700');
+    }
+
+    async function testConnection() {
+      const url = document.getElementById('setUrlInput').value.trim();
+      const pin = document.getElementById('setPinInput').value.trim();
+      if (!url || !pin) {
+        showSettingsResult('서버 주소와 PIN을 모두 입력해 주세요.', 'error');
+        return;
+      }
+      showSettingsResult('연결 확인 중...', 'ok');
+      try {
+        const res = await callGas('ping', {}, { url, pin });
+        if (res.status === 'success') {
+          const ai = res.ai ? 'AI 분석 사용 가능' : 'AI 키 미설정(내장 분석으로 동작)';
+          const sms = res.sms ? '문자 발송 사용 가능' : '문자 발송 설정 미완료';
+          showSettingsResult(`연결 성공 · ${ai} · ${sms}`, 'ok');
+        } else {
+          showSettingsResult(res.message || '연결에 실패했습니다.', 'error');
+        }
+      } catch (err) {
+        showSettingsResult(err.message, 'error');
+      }
+    }
+
+    // 서버 호출 공통 함수 (text/plain으로 보내 CORS 사전요청 회피)
+    async function callGas(action, payload, connOverride) {
+      const conn = connOverride || getConn();
+      if (!conn) throw new Error('연결 설정이 필요합니다.');
+
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 30000);
+      try {
+        const response = await fetch(conn.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action, pin: conn.pin, ...payload }),
+          signal: ctrl.signal
+        });
+        if (!response.ok) throw new Error(`서버 응답 오류 (${response.status})`);
+
+        let data;
+        try {
+          data = await response.json();
+        } catch (_) {
+          throw new Error('서버 응답을 해석할 수 없습니다. 배포 접근 권한(모든 사용자)을 확인해 주세요.');
+        }
+        return data;
+      } catch (err) {
+        if (err.name === 'AbortError') throw new Error('서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.');
+        if (err instanceof TypeError) throw new Error('서버에 연결할 수 없습니다. 주소와 네트워크를 확인해 주세요.');
+        throw err;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    /* =====================================================================
+       달성도 점수
+    ===================================================================== */
+    function computeScore(t, intake) {
+      if (intake.kcal <= 0) return null;
+
+      const proPct = Math.min(1, intake.protein / Math.max(1, t.targetProtein));
+      const kcalPct = intake.kcal <= t.targetKcal
+        ? intake.kcal / t.targetKcal
+        : Math.max(0, 1 - (intake.kcal - t.targetKcal) / t.targetKcal);
+
+      const mk = intake.carb * 4 + intake.protein * 4 + intake.fat * 9;
+      const tk = t.targetCarb * 4 + t.targetProtein * 4 + t.targetFat * 9;
+      let bal = 0;
+      if (mk > 0 && tk > 0) {
+        const diff =
+          Math.abs(intake.carb * 4 / mk - t.targetCarb * 4 / tk) +
+          Math.abs(intake.protein * 4 / mk - t.targetProtein * 4 / tk) +
+          Math.abs(intake.fat * 9 / mk - t.targetFat * 9 / tk);
+        bal = Math.max(0, 1 - diff);
+      }
+      return Math.round((0.4 * proPct + 0.4 * kcalPct + 0.2 * bal) * 100);
+    }
+
+    function refreshScore() {
+      const t = calculateTargets(getProfile());
+      const intake = getIntake();
+      const score = computeScore(t, intake);
+      const ring = document.getElementById('scoreRing');
+      const txt = document.getElementById('scoreText');
+      const cap = document.getElementById('scoreCaption');
+
+      if (score === null) {
+        ring.style.strokeDashoffset = RING_C;
+        txt.textContent = '–';
+        cap.textContent = '식단을 기록하면 점수가 계산됩니다.';
+        return;
+      }
+      ring.style.strokeDashoffset = RING_C * (1 - score / 100);
+      txt.textContent = score;
+      cap.textContent = `열량 ${Math.round(intake.kcal)} / ${t.targetKcal} kcal · 단백질 ${Math.round(intake.protein)} / ${t.targetProtein} g (앱 자체 산식, 참고용)`;
+    }
+
+    /* =====================================================================
+       AI 코칭
+    ===================================================================== */
+    function gatherSummary() {
+      const profile = getProfile();
+      const t = calculateTargets(profile);
+      const intake = getIntake();
+      const lastMealRaw = localStorage.getItem('nutri_last_meal_time');
+      const lastMeal = lastMealRaw ? Number(lastMealRaw) : null;
+      const fastingHours = lastMeal ? Math.max(0, (Date.now() - lastMeal) / 3600000) : null;
+
+      return {
+        profile: {
+          weight: profile.weight,
+          bodyFat: profile.bodyFat,
+          goal: profile.goal,
+          mealsPerDay: profile.mealsPerDay,
+          fastingGoalHours: profile.fastingGoalHours || profile.fastingHours || 16
+        },
+        targets: {
+          lbm: t.lbm,
+          targetKcal: t.targetKcal,
+          targetCarb: t.targetCarb,
+          targetProtein: t.targetProtein,
+          targetFat: t.targetFat
+        },
+        intake: {
+          kcal: Math.round(intake.kcal),
+          carb: Math.round(intake.carb),
+          protein: Math.round(intake.protein),
+          fat: Math.round(intake.fat)
+        },
+        fastingHours: fastingHours === null ? null : +fastingHours.toFixed(1)
+      };
+    }
+
+    // 서버(Gemini)를 쓸 수 없을 때 사용하는 내장 분석 (서버 응답과 동일한 구조)
+    function builtinCoaching(s) {
+      const t = s.targets, i = s.intake, p = s.profile;
+      const diffPro = Math.max(0, t.targetProtein - i.protein);
+      const diffKcal = t.targetKcal - i.kcal;
+      const perMealPro = Math.round(t.targetProtein / p.mealsPerDay);
+
+      let balance;
+      if (i.kcal <= 0) {
+        balance = { headline: '아직 기록된 식사가 없어요', detail: '첫 끼를 기록하면 목표 대비 영양 균형을 분석해 드립니다.' };
+      } else if (diffKcal < 0) {
+        balance = { headline: `목표 열량을 ${Math.abs(Math.round(diffKcal))}kcal 초과`, detail: '남은 끼니는 채소와 단백질 위주로 가볍게 구성해 보세요.' };
+      } else if (diffPro <= 0) {
+        balance = { headline: '단백질 목표 달성', detail: `남은 여유 열량은 ${Math.round(diffKcal)}kcal입니다. 부족한 탄수화물·지방을 균형 있게 채워 보세요.` };
+      } else {
+        balance = { headline: `단백질 ${diffPro}g 더 필요`, detail: `남은 여유 열량 ${Math.round(diffKcal)}kcal. 제지방량(${t.lbm}kg) 보존을 위해 단백질을 우선 채워 보세요.` };
+      }
+
+      let fasting;
+      const goalH = p.fastingGoalHours;
+      if (s.fastingHours === null) {
+        fasting = { headline: '공복 기록 없음', detail: '식사를 기록하면 공복 타이머가 시작되어 단식 진행 상황을 알려 드립니다.' };
+      } else if (s.fastingHours >= goalH) {
+        fasting = { headline: `목표 ${goalH}시간 공복 달성`, detail: '첫 끼는 혈당 급상승을 막기 위해 식이섬유와 단백질을 먼저 드세요.' };
+      } else {
+        fasting = { headline: `${s.fastingHours}시간째 공복 유지 중`, detail: `목표까지 약 ${(goalH - s.fastingHours).toFixed(1)}시간 남았습니다. 물이나 무가당 차로 버텨 보세요.` };
+      }
+
+      const nextMeal = {
+        headline: '닭가슴살 + 달걀 + 현미밥',
+        detail: `한 끼 권장 단백질 ${perMealPro}g 기준: 구운 닭가슴살 100g, 삶은 달걀 2개, 현미밥 반 공기를 추천합니다.`
+      };
+
+      return { balance, fasting, nextMeal };
+    }
+
+    const ICONS = {
+      balance: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+      fasting: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+      nextMeal: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/></svg>'
+    };
+    const CARD_META = [
+      { key: 'balance',  label: '영양 균형', tone: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+      { key: 'fasting',  label: '공복 상태', tone: 'bg-sky-50 text-sky-700 border-sky-100' },
+      { key: 'nextMeal', label: '다음 끼니', tone: 'bg-amber-50 text-amber-700 border-amber-100' }
+    ];
+
+    function renderInsightPlaceholder() {
+      document.getElementById('insightGrid').innerHTML = CARD_META.map(m => `
+        <div class="rounded-2xl border border-stone-200 p-4 bg-stone-50/60">
+          <div class="flex items-center gap-2 mb-2.5">
+            <span class="w-8 h-8 rounded-xl border flex items-center justify-center ${m.tone}">${ICONS[m.key]}</span>
+            <span class="text-[11px] font-bold text-stone-500">${m.label}</span>
+          </div>
+          <p class="text-sm font-bold text-stone-400">분석 전</p>
+          <p class="text-xs text-stone-400 mt-1 leading-relaxed">[AI 분석 실행]을 누르면 이 항목이 채워집니다.</p>
+        </div>`).join('');
+    }
+
+    function renderInsightSkeleton() {
+      document.getElementById('insightGrid').innerHTML = CARD_META.map(() => `
+        <div class="rounded-2xl border border-stone-200 p-4 animate-pulse">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="w-8 h-8 rounded-xl bg-stone-200"></span>
+            <span class="h-3 w-14 rounded bg-stone-200"></span>
+          </div>
+          <div class="h-4 w-4/5 rounded bg-stone-200 mb-2.5"></div>
+          <div class="h-3 w-full rounded bg-stone-100 mb-1.5"></div>
+          <div class="h-3 w-2/3 rounded bg-stone-100"></div>
+        </div>`).join('');
+    }
+
+    function renderInsights(c) {
+      document.getElementById('insightGrid').innerHTML = CARD_META.map(m => {
+        const item = c[m.key];
+        return `
+          <div class="rounded-2xl border border-stone-200 p-4 hover:shadow-md hover:border-emerald-200 transition bg-white">
+            <div class="flex items-center gap-2 mb-2.5">
+              <span class="w-8 h-8 rounded-xl border flex items-center justify-center ${m.tone}">${ICONS[m.key]}</span>
+              <span class="text-[11px] font-bold text-stone-500">${m.label}</span>
+            </div>
+            <p class="text-sm font-bold text-stone-900 leading-snug">${escapeHtml(item.headline)}</p>
+            <p class="text-xs text-stone-600 mt-1.5 leading-relaxed">${escapeHtml(item.detail)}</p>
+          </div>`;
+      }).join('');
+    }
+
+    async function runCoaching() {
+      const btn = document.getElementById('coachBtn');
+      btn.disabled = true;
+      btn.textContent = '분석 중...';
+      renderInsightSkeleton();
+      refreshScore();
+
+      const summary = gatherSummary();
+      let coaching = null;
+      let source = 'builtin';
+
+      if (getConn()) {
+        try {
+          const res = await callGas('coach', { summary });
+          if (res.status === 'success' && res.coaching) {
+            coaching = res.coaching;
+            source = 'gemini';
+          } else if (res.status === 'error') {
+            if (res.code === 'AUTH' || res.code === 'LOCKED') {
+              toast(res.message, 'error');
+            } else if (res.code === 'LIMIT') {
+              toast(res.message + ' 내장 분석으로 대체합니다.', 'warn');
+            } else {
+              toast('AI 연결에 문제가 있어 내장 분석으로 대체합니다.', 'warn');
+            }
+          }
+        } catch (err) {
+          toast(err.message + ' 내장 분석으로 대체합니다.', 'warn');
+        }
+      }
+
+      if (!coaching) coaching = builtinCoaching(summary);
+
+      lastCoaching = { data: coaching, source, summary };
+      renderInsights(coaching);
+      setChip(source);
+
+      btn.disabled = false;
+      btn.textContent = '다시 분석하기';
+    }
+
+    /* =====================================================================
+       문자 리포트 전송 (확인 → 전송 → 토스트)
+    ===================================================================== */
+    function buildDetailText() {
+      const { data, summary } = lastCoaching;
+      const t = summary.targets, i = summary.intake;
+      const score = computeScore(
+        { targetKcal: t.targetKcal, targetCarb: t.targetCarb, targetProtein: t.targetProtein, targetFat: t.targetFat },
+        { kcal: i.kcal, carb: i.carb, protein: i.protein, fat: i.fat }
+      );
+
+      const lines = [
+        '[NutriFast 오늘의 영양 리포트]',
+        `섭취 ${i.kcal}/${t.targetKcal}kcal · 단백질 ${i.protein}/${t.targetProtein}g` + (score === null ? '' : ` · 달성도 ${score}점`),
+        '',
+        `■ ${data.balance.headline}`,
+        data.balance.detail,
+        `■ ${data.fasting.headline}`,
+        data.fasting.detail,
+        `■ 다음 끼니: ${data.nextMeal.headline}`,
+        data.nextMeal.detail
+      ];
+      return lines.join('\n');
+    }
+
+    // 문자 길이 계산: 한글 등 비ASCII는 2바이트, 단문(SMS)은 90바이트 이내
+    function byteLen(str) {
+      let n = 0;
+      for (const ch of String(str)) n += ch.charCodeAt(0) <= 0x7f ? 1 : 2;
+      return n;
+    }
+
+    function truncateToBytes(str, max) {
+      let out = '', n = 0;
+      for (const ch of String(str)) {
+        const b = ch.charCodeAt(0) <= 0x7f ? 1 : 2;
+        if (n + b > max) break;
+        out += ch;
+        n += b;
+      }
+      return out;
+    }
+
+    // 간단히: 90바이트(여유 2바이트) 안에 핵심만 담은 단문
+    function buildBriefText() {
+      const { data, summary } = lastCoaching;
+      const t = summary.targets, i = summary.intake;
+      const score = computeScore(
+        { targetKcal: t.targetKcal, targetCarb: t.targetCarb, targetProtein: t.targetProtein, targetFat: t.targetFat },
+        { kcal: i.kcal, carb: i.carb, protein: i.protein, fat: i.fat }
+      );
+      const MAX = 88;
+      let text = '[NutriFast]';
+      const add = line => {
+        const next = text + '\n' + line;
+        if (byteLen(next) <= MAX) { text = next; return true; }
+        return false;
+      };
+
+      if (score !== null) add(`달성도 ${score}점`);
+      if (i.kcal > 0) {
+        const diffPro = Math.max(0, t.targetProtein - i.protein);
+        add(diffPro > 0 ? `단백질 ${diffPro}g 부족` : '단백질 목표 달성');
+      }
+      if (summary.fastingHours !== null) add(`공복 ${summary.fastingHours}시간`);
+
+      // 다음 끼니는 남은 바이트 안에서 잘라 넣기
+      const prefix = text + '\n다음: ';
+      const head = truncateToBytes(String(data.nextMeal.headline).replace(/\s*\+\s*/g, '+'), MAX - byteLen(prefix));
+      if (head) text = prefix + head;
+      return text;
+    }
+
+    let sendMode = localStorage.getItem('nutri_sms_mode') === 'detail' ? 'detail' : 'brief';
+
+    function setSendMode(mode) {
+      sendMode = mode;
+      localStorage.setItem('nutri_sms_mode', mode);
+      renderSendPreview();
+    }
+
+    function renderSendPreview() {
+      const text = sendMode === 'brief' ? buildBriefText() : buildDetailText();
+      document.getElementById('sendPreview').textContent = text;
+
+      const bytes = byteLen(text);
+      const isSms = bytes <= 90;
+      document.getElementById('sendMeta').textContent = isSms
+        ? `${bytes}/90 바이트 · 단문(SMS)으로 발송됩니다.`
+        : `${bytes} 바이트 · 장문(LMS)으로 발송되며 단문보다 비용이 높습니다.`;
+
+      const on = 'py-2 rounded-lg text-xs font-bold transition bg-white shadow text-emerald-800';
+      const off = 'py-2 rounded-lg text-xs font-bold transition text-stone-500 hover:text-stone-700';
+      document.getElementById('modeBrief').className = sendMode === 'brief' ? on : off;
+      document.getElementById('modeDetail').className = sendMode === 'detail' ? on : off;
+    }
+
+    async function openSendModal() {
+      if (!getConn()) {
+        toast('먼저 연결 설정에서 서버 주소와 PIN을 저장해 주세요.', 'warn');
+        openSettings();
+        return;
+      }
+      if (!lastCoaching) {
+        await runCoaching();
+      }
+      renderSendPreview();
+      document.getElementById('sendModal').classList.remove('hidden');
+    }
+
+    function closeSendModal() {
+      document.getElementById('sendModal').classList.add('hidden');
+    }
+
+    async function confirmSend() {
+      const btn = document.getElementById('confirmSendBtn');
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '전송 중...';
+
+      try {
+        const res = await callGas('send', { message: document.getElementById('sendPreview').textContent });
+        if (res.status === 'success') {
+          closeSendModal();
+          const now = new Date();
+          localStorage.setItem(LS_LAST_SENT, String(now.getTime()));
+          renderLastSent();
+          toast('리포트를 휴대폰으로 전송했습니다.');
+        } else {
+          toast(res.message || '전송에 실패했습니다.', 'error');
+        }
+      } catch (err) {
+        toast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    }
+
+    function renderLastSent() {
+      const ts = Number(localStorage.getItem(LS_LAST_SENT) || 0);
+      const el = document.getElementById('lastSentText');
+      if (!ts) {
+        el.textContent = '마지막 발송: 기록 없음';
+        return;
+      }
+      const d = new Date(ts);
+      const pad = n => String(n).padStart(2, '0');
+      el.textContent = `마지막 발송: ${d.getMonth() + 1}월 ${d.getDate()}일 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    /* =====================================================================
+       초기화
+    ===================================================================== */
+    window.addEventListener('DOMContentLoaded', () => {
+      loadProfileToForm();
+      renderInsightPlaceholder();
+      renderLastSent();
+      setChip(getConn() ? 'ready' : 'setup');
+
+      // 모달 바깥 클릭 시 닫기
+      ['settingsModal', 'sendModal'].forEach(id => {
+        document.getElementById(id).addEventListener('click', e => {
+          if (e.target.id === id) document.getElementById(id).classList.add('hidden');
+        });
+      });
+    });
+  </script>
+</body>
+</html>
